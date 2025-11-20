@@ -1,0 +1,16 @@
+INSTRUCCIONES RÁPIDAS PARA CREAR ICONOS PNG (2 minutos):
+
+1. Ir a: https://cloudconvert.com/svg-to-png
+2. Subir: icon-192x192.svg
+3. Configurar: Width=192, Height=192
+4. Convertir y Descargar
+5. Guardar como: icon-192x192.png en esta carpeta
+
+6. Repetir para icon-512x512.svg (512x512)
+7. Guardar como: icon-512x512.png
+
+ALTERNATIVA:
+- Abrir generate-icons.html en el navegador
+- Click en "Generar y Descargar Iconos"
+- Mover los PNG descargados a esta carpeta
+

@@ -1,0 +1,21 @@
+{
+  "name": "@pf/mobile",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start -c",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
+  },
+  "dependencies": {
+    "expo": "^51.0.0",
+    "react": "18.2.0",
+    "react-native": "0.74.0",
+    "axios": "^1.6.8",
+    "@react-navigation/native": "^6.1.9",
+    "@react-navigation/native-stack": "^6.9.17"
+  }
+}
+
+
+

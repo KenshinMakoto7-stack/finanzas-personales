@@ -1,0 +1,215 @@
+// apps/api/prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountType {
+  CASH
+  BANK
+  CREDIT
+  SAVINGS
+  OTHER
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  name          String?
+  currencyCode  String         @default("USD")
+  locale        String?        @default("en-US")
+  timeZone      String?        @default("UTC")
+  resetToken    String?        // Token para recuperación de contraseña
+  resetTokenExpires DateTime?  // Fecha de expiración del token
+  createdAt     DateTime       @default(now())
+
+  accounts      Account[]
+  categories    Category[]
+  transactions  Transaction[]
+  goals         MonthlyGoal[]
+  categoryBudgets CategoryBudget[]
+  tags          Tag[]
+  patterns      TransactionPattern[]
+  debts         Debt[]
+}
+
+model Account {
+  id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  type         AccountType
+  currencyCode String
+  createdAt    DateTime      @default(now())
+
+  transactions Transaction[]
+  patterns     TransactionPattern[]
+
+  @@index([userId])
+}
+
+model Category {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  type           CategoryType
+  parentId       String?
+  parent         Category?    @relation("CategoryToSubcategories", fields: [parentId], references: [id])
+  subcategories  Category[]   @relation("CategoryToSubcategories")
+  transactions   Transaction[]
+  budgets        CategoryBudget[]
+  patterns       TransactionPattern[]
+  icon           String?      // Icono opcional para la categoría
+  color          String?       // Color opcional para la categoría
+  createdAt      DateTime     @default(now())
+
+  @@index([userId])
+  @@index([userId, parentId])
+}
+
+model Transaction {
+  id           String          @id @default(cuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId    String
+  account      Account         @relation(fields: [accountId], references: [id])
+  categoryId   String?         // Opcional en DB pero requerido en validación
+  category     Category?       @relation(fields: [categoryId], references: [id])
+  type         TransactionType
+  amountCents  Int             // enteros (redondeados, sin decimales)
+  currencyCode String          @default("USD") // Moneda de la transacción
+  occurredAt   DateTime        // UTC
+  description  String?
+  isRecurring  Boolean         @default(false)
+  recurringRule String?       // JSON con regla de recurrencia (ej: "daily", "weekly", "monthly")
+  nextOccurrence DateTime?    // Próxima ocurrencia si es recurrente
+  notificationSchedule String? // JSON array con [{date, time}] para notificaciones programadas
+  isPaid       Boolean         @default(false) // Si está pagado (para recurrentes)
+  totalOccurrences Int?        // Total de ocurrencias planificadas (null = indefinido)
+  remainingOccurrences Int?    // Cuántas ocurrencias quedan (null = indefinido)
+  createdAt    DateTime        @default(now())
+
+  tags          TransactionTag[]
+
+  @@index([userId, occurredAt])
+  @@index([userId, categoryId])
+  @@index([userId, accountId])
+  @@index([userId, isRecurring])
+}
+
+model MonthlyGoal {
+  id               String     @id @default(cuid())
+  userId           String
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  month            DateTime   // primer día del mes en UTC
+  savingGoalCents  Int
+  createdAt        DateTime   @default(now())
+
+  @@unique([userId, month])
+  @@index([userId, month])
+}
+
+// Presupuesto por Categoría
+model CategoryBudget {
+  id               String     @id @default(cuid())
+  userId           String
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId       String
+  category         Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  month            DateTime   // primer día del mes en UTC
+  budgetCents      Int        // Presupuesto en centavos
+  alertThreshold   Int        @default(80) // Porcentaje para alerta (80%, 90%, 100%)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@unique([userId, categoryId, month])
+  @@index([userId, month])
+}
+
+// Etiquetas/Tags
+model Tag {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  color       String?       @default("#667eea")
+  createdAt   DateTime      @default(now())
+
+  transactions TransactionTag[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+// Relación many-to-many entre Transaction y Tag
+model TransactionTag {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tagId         String
+  tag           Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@unique([transactionId, tagId])
+  @@index([transactionId])
+  @@index([tagId])
+}
+
+// Patrones reconocidos para sugerencias
+model TransactionPattern {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amountCents     Int?        // Monto típico (opcional)
+  categoryId     String?
+  category        Category?   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  accountId       String?
+  account         Account?    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  descriptionPattern String?  // Patrón de texto en descripción
+  dayOfWeek      Int?        // 0-6 (domingo-sábado)
+  dayOfMonth     Int?        // 1-31
+  frequency      Int         @default(1) // Veces que aparece
+  lastMatched    DateTime?   // Última vez que se usó este patrón
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([userId, categoryId])
+}
+
+// Deudas (cuotas mensuales)
+model Debt {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  description       String    // Descripción de la deuda
+  totalAmountCents  Int       // Monto total de la deuda
+  monthlyPaymentCents Int     // Monto de cada cuota mensual
+  totalInstallments Int       // Total de cuotas
+  paidInstallments  Int       @default(0) // Cuotas ya pagadas
+  startMonth        DateTime  // Mes de inicio (primer día del mes)
+  currencyCode      String    @default("USD")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([userId, startMonth])
+}
+
