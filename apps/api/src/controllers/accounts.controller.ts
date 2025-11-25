@@ -9,7 +9,6 @@ export async function listAccounts(req: AuthRequest, res: Response) {
   try {
     const snapshot = await db.collection("accounts")
       .where("userId", "==", req.user!.userId)
-      .orderBy("createdAt", "asc")
       .get();
 
     const accounts = snapshot.docs.map(doc => docToObject(doc));
