@@ -116,9 +116,8 @@ export default function NotificationManager() {
       badge: "/icon-192x192.png",
       tag: notif.type,
       requireInteraction: notif.priority === "high",
-      vibrate: notif.priority === "high" ? [200, 100, 200] : [200],
       data: notif.data
-    });
+    } as NotificationOptions);
 
     notification.onclick = () => {
       window.focus();
