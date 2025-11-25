@@ -5,14 +5,28 @@ import { useAuth } from "../../store/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { DashboardSkeleton } from "../../components/ui/Skeleton";
 
 function fmtMoney(cents: number, currency = "USD") {
   return new Intl.NumberFormat(undefined, { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(cents / 100);
 }
 
+// Hook para detectar móvil
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return isMobile;
+}
+
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const isMobile = useIsMobile();
   const [data, setData] = useState<any>();
   const [monthlyData, setMonthlyData] = useState<any>();
   const [goalData, setGoalData] = useState<any>();
@@ -283,18 +297,17 @@ export default function Dashboard() {
     return (
       <div style={{ 
         minHeight: "100vh", 
-        display: "flex", 
-        alignItems: "center", 
-        justifyContent: "center",
         background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
       }}>
-        <div style={{
-          background: "white",
-          padding: "40px",
-          borderRadius: "20px",
-          boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)"
-        }}>
-          <p style={{ fontSize: "18px", color: "#667eea", fontWeight: "600" }}>Cargando...</p>
+        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+          <div style={{
+            background: "white",
+            borderRadius: "20px",
+            margin: "20px",
+            boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+          }}>
+            <DashboardSkeleton />
+          </div>
         </div>
       </div>
     );

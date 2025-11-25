@@ -3,21 +3,25 @@ import { useState } from "react";
 import { useAuth } from "../../store/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useZodForm, Form, FormInput, Button } from "../../components/ui";
+import { LoginSchema, LoginInput } from "../../lib/schemas";
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const form = useZodForm(LoginSchema, {
+    email: "",
+    password: "",
+  });
+
+  async function onSubmit(data: LoginInput) {
     setError(undefined);
     setLoading(true);
     try {
-      await login(email, password);
+      await login(data.email, data.password);
       router.push("/dashboard");
     } catch (err: any) {
       setError(err?.response?.data?.error ?? "Error al iniciar sesión. Verifica tus credenciales.");
@@ -56,64 +60,22 @@ export default function LoginPage() {
           <p style={{ color: "#666", fontSize: "16px" }}>Inicia sesión en tu cuenta</p>
         </div>
 
-        <form onSubmit={onSubmit}>
-          <div style={{ marginBottom: "20px" }}>
-            <label style={{ 
-              display: "block", 
-              marginBottom: "8px", 
-              color: "#333", 
-              fontWeight: "600",
-              fontSize: "14px"
-            }}>
-              Email
-            </label>
-            <input
-              type="email"
-              placeholder="tu@email.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              style={{
-                width: "100%",
-                padding: "14px 16px",
-                border: "2px solid #e0e0e0",
-                borderRadius: "10px",
-                fontSize: "16px",
-                transition: "all 0.3s"
-              }}
-              onFocus={(e) => e.target.style.borderColor = "#667eea"}
-              onBlur={(e) => e.target.style.borderColor = "#e0e0e0"}
-            />
-          </div>
+        <Form form={form} onSubmit={onSubmit}>
+          <FormInput
+            form={form}
+            name="email"
+            label="Email"
+            type="email"
+            placeholder="tu@email.com"
+          />
 
-          <div style={{ marginBottom: "24px" }}>
-            <label style={{ 
-              display: "block", 
-              marginBottom: "8px", 
-              color: "#333", 
-              fontWeight: "600",
-              fontSize: "14px"
-            }}>
-              Contraseña
-            </label>
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              style={{
-                width: "100%",
-                padding: "14px 16px",
-                border: "2px solid #e0e0e0",
-                borderRadius: "10px",
-                fontSize: "16px",
-                transition: "all 0.3s"
-              }}
-              onFocus={(e) => e.target.style.borderColor = "#667eea"}
-              onBlur={(e) => e.target.style.borderColor = "#e0e0e0"}
-            />
-          </div>
+          <FormInput
+            form={form}
+            name="password"
+            label="Contraseña"
+            type="password"
+            placeholder="••••••••"
+          />
 
           {error && (
             <div style={{
@@ -129,35 +91,9 @@ export default function LoginPage() {
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: "14px",
-              background: loading ? "#ccc" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              color: "white",
-              border: "none",
-              borderRadius: "10px",
-              fontSize: "16px",
-              fontWeight: "600",
-              cursor: loading ? "not-allowed" : "pointer",
-              transition: "all 0.3s",
-              marginBottom: "20px"
-            }}
-            onMouseEnter={(e) => {
-              if (!loading) {
-                e.currentTarget.style.transform = "translateY(-2px)";
-                e.currentTarget.style.boxShadow = "0 5px 20px rgba(102, 126, 234, 0.4)";
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "translateY(0)";
-              e.currentTarget.style.boxShadow = "none";
-            }}
-          >
-            {loading ? "Iniciando sesión..." : "Iniciar Sesión"}
-          </button>
+          <Button type="submit" loading={loading} disabled={!form.formState.isValid}>
+            Iniciar Sesión
+          </Button>
 
           <div style={{ textAlign: "center", marginTop: "24px" }}>
             <p style={{ color: "#666", fontSize: "14px", marginBottom: "8px" }}>
@@ -181,7 +117,7 @@ export default function LoginPage() {
               </Link>
             </p>
           </div>
-        </form>
+        </Form>
       </div>
     </div>
   );

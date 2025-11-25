@@ -1,11 +1,13 @@
-import { prisma } from "../lib/db.js";
+import { db } from "../lib/firebase.js";
 import { monthRangeUTC, dayRangeUTC } from "../lib/time.js";
+import { docToObject } from "../lib/firestore-helpers.js";
+import { Timestamp } from "firebase-admin/firestore";
 
 /** Función pura: cálculo del promedio y rollover (todos en centavos) */
 export function computeDailyBudgetWithRollover(params: {
   year: number;
-  month: number;                // 1..12
-  dayOfMonth: number;           // 1..31 según mes
+  month: number;
+  dayOfMonth: number;
   daysInMonth: number;
   totalIncomeCents: number;
   spentBeforeTodayCents: number;
@@ -52,37 +54,56 @@ export async function getBudgetSummaryForDate(userId: string, dateISO: string, u
   const dayRange = dayRangeUTC(dateISO, userTimeZone);
 
   // Meta del mes (si no existe, 0)
-  const goal = await prisma.monthlyGoal.findUnique({
-    where: { userId_month: { userId, month: new Date(Date.UTC(monthRange.year, monthRange.month - 1, 1)) } }
-  });
-  const savingGoalCents = goal?.savingGoalCents ?? 0;
+  const monthDate = new Date(Date.UTC(monthRange.year, monthRange.month - 1, 1));
+  const goalsSnapshot = await db.collection("monthlyGoals")
+    .where("userId", "==", userId)
+    .where("month", "==", Timestamp.fromDate(monthDate))
+    .limit(1)
+    .get();
+
+  const savingGoalCents = goalsSnapshot.empty ? 0 : (goalsSnapshot.docs[0].data().savingGoalCents as number || 0);
 
   // Ingresos del mes
-  const incomesAgg = await prisma.transaction.aggregate({
-    _sum: { amountCents: true },
-    where: { userId, type: "INCOME", occurredAt: { gte: monthRange.start, lte: monthRange.end } }
-  });
-  const totalIncomeCents = incomesAgg._sum.amountCents ?? 0;
+  const incomeSnapshot = await db.collection("transactions")
+    .where("userId", "==", userId)
+    .where("type", "==", "INCOME")
+    .where("occurredAt", ">=", Timestamp.fromDate(monthRange.start))
+    .where("occurredAt", "<=", Timestamp.fromDate(monthRange.end))
+    .get();
+
+  const totalIncomeCents = incomeSnapshot.docs.reduce((sum, doc) => {
+    return sum + (doc.data().amountCents || 0);
+  }, 0);
 
   // Gastos hasta ayer
-  const spentBeforeAgg = await prisma.transaction.aggregate({
-    _sum: { amountCents: true },
-    where: { userId, type: "EXPENSE", occurredAt: { gte: monthRange.start, lt: dayRange.start } }
-  });
-  const spentBeforeTodayCents = spentBeforeAgg._sum.amountCents ?? 0;
+  const spentBeforeSnapshot = await db.collection("transactions")
+    .where("userId", "==", userId)
+    .where("type", "==", "EXPENSE")
+    .where("occurredAt", ">=", Timestamp.fromDate(monthRange.start))
+    .where("occurredAt", "<", Timestamp.fromDate(dayRange.start))
+    .get();
+
+  const spentBeforeTodayCents = spentBeforeSnapshot.docs.reduce((sum, doc) => {
+    return sum + (doc.data().amountCents || 0);
+  }, 0);
 
   // Gastos de hoy
-  const spentTodayAgg = await prisma.transaction.aggregate({
-    _sum: { amountCents: true },
-    where: { userId, type: "EXPENSE", occurredAt: { gte: dayRange.start, lte: dayRange.end } }
-  });
-  const spentTodayCents = spentTodayAgg._sum.amountCents ?? 0;
+  const spentTodaySnapshot = await db.collection("transactions")
+    .where("userId", "==", userId)
+    .where("type", "==", "EXPENSE")
+    .where("occurredAt", ">=", Timestamp.fromDate(dayRange.start))
+    .where("occurredAt", "<=", Timestamp.fromDate(dayRange.end))
+    .get();
+
+  const spentTodayCents = spentTodaySnapshot.docs.reduce((sum, doc) => {
+    return sum + (doc.data().amountCents || 0);
+  }, 0);
 
   const calc = computeDailyBudgetWithRollover({
     year: monthRange.year,
     month: monthRange.month,
     dayOfMonth: dayRange.dayOfMonth,
-    daysInMonth: monthRange.daysInMonth,
+    daysInMonth: monthRange.daysInMonth ?? 30,
     totalIncomeCents,
     spentBeforeTodayCents,
     spentTodayCents,
@@ -91,6 +112,3 @@ export async function getBudgetSummaryForDate(userId: string, dateISO: string, u
 
   return { params: { date: dateISO, timeZone: userTimeZone }, data: calc };
 }
-
-
-

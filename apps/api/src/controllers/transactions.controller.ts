@@ -1,221 +1,372 @@
 import { Request, Response } from "express";
-import { prisma } from "../lib/db.js";
+import { db } from "../lib/firebase.js";
 import { TransactionSchema } from "@pf/shared";
 import { AuthRequest } from "../server/middleware/auth.js";
+import { objectToFirestore, docToObject, textSearch, getDocumentsByIds, chunkArray } from "../lib/firestore-helpers.js";
+import { Timestamp } from "firebase-admin/firestore";
 
 export async function listTransactions(req: AuthRequest, res: Response) {
-  const { 
-    from, 
-    to, 
-    categoryId, 
-    accountId, 
-    type,
-    tagId,
-    minAmount,
-    maxAmount,
-    search,
-    isRecurring,
-    page = "1", 
-    pageSize = "50",
-    sortBy = "occurredAt",
-    sortOrder = "desc"
-  } = req.query as any;
-  
-  const where: any = { userId: req.user!.userId };
-  
-  // Filtros de fecha
-  if (from || to) {
-    where.occurredAt = { 
-      ...(from ? { gte: new Date(from) } : {}), 
-      ...(to ? { lte: new Date(to) } : {}) 
-    };
-  }
-  
-  // Filtros básicos
-  if (categoryId) where.categoryId = String(categoryId);
-  if (accountId) where.accountId = String(accountId);
-  if (type) where.type = type;
-  if (isRecurring !== undefined) where.isRecurring = isRecurring === "true";
-  
-  // Filtros de monto
-  if (minAmount || maxAmount) {
-    where.amountCents = {
-      ...(minAmount ? { gte: Number(minAmount) } : {}),
-      ...(maxAmount ? { lte: Number(maxAmount) } : {})
-    };
-  }
-  
-  // Búsqueda por texto en descripción
-  if (search) {
-    where.description = { contains: search, mode: "insensitive" };
-  }
-  
-  // Filtro por tag
-  if (tagId) {
-    where.tags = {
-      some: {
-        tagId: String(tagId)
+  try {
+    const {
+      from,
+      to,
+      categoryId,
+      accountId,
+      type,
+      tagId,
+      minAmount,
+      maxAmount,
+      search,
+      isRecurring,
+      page = "1",
+      pageSize = "50",
+      sortBy = "occurredAt",
+      sortOrder = "desc"
+    } = req.query as any;
+
+    let query: FirebaseFirestore.Query = db.collection("transactions")
+      .where("userId", "==", req.user!.userId);
+
+    // Filtros de fecha
+    if (from) {
+      query = query.where("occurredAt", ">=", Timestamp.fromDate(new Date(from as string)));
+    }
+    if (to) {
+      query = query.where("occurredAt", "<=", Timestamp.fromDate(new Date(to as string)));
+    }
+
+    // Filtros básicos
+    if (categoryId) {
+      query = query.where("categoryId", "==", String(categoryId));
+    }
+    if (accountId) {
+      query = query.where("accountId", "==", String(accountId));
+    }
+    if (type) {
+      query = query.where("type", "==", type);
+    }
+    if (isRecurring !== undefined) {
+      query = query.where("isRecurring", "==", isRecurring === "true");
+    }
+
+    // Filtros de monto (requiere índice compuesto)
+    if (minAmount || maxAmount) {
+      if (minAmount) {
+        query = query.where("amountCents", ">=", Number(minAmount));
       }
-    };
+      if (maxAmount) {
+        query = query.where("amountCents", "<=", Number(maxAmount));
+      }
+    }
+
+    // Ordenamiento
+    const orderDirection = sortOrder === "asc" ? "asc" : "desc";
+    query = query.orderBy(sortBy || "occurredAt", orderDirection);
+
+    // Paginación
+    const skip = (Number(page) - 1) * Number(pageSize);
+    const take = Number(pageSize);
+
+    // Ejecutar query
+    const snapshot = await query.offset(skip).limit(take).get();
+    
+    // Obtener total (query separada para count)
+    const countSnapshot = await db.collection("transactions")
+      .where("userId", "==", req.user!.userId)
+      .count()
+      .get();
+    const total = countSnapshot.data().count;
+
+    let transactions = snapshot.docs.map(doc => docToObject(doc));
+
+    // Filtro por tag (post-procesamiento si no se puede hacer en query)
+    if (tagId) {
+      const transactionIds = new Set<string>();
+      const tagRefs = await db.collection("transactionTags")
+        .where("tagId", "==", String(tagId))
+        .get();
+      tagRefs.docs.forEach(doc => {
+        transactionIds.add(doc.data().transactionId);
+      });
+      transactions = transactions.filter(tx => transactionIds.has(tx.id));
+    }
+
+    // Búsqueda de texto (post-procesamiento)
+    if (search) {
+      const searchLower = (search as string).toLowerCase();
+      transactions = transactions.filter((tx: any) => {
+        const desc = (tx.description || "").toLowerCase();
+        return desc.includes(searchLower);
+      });
+    }
+
+    // Cargar relaciones (category, account, tags)
+    const categoryIds = [...new Set(transactions.map((t: any) => t.categoryId).filter(Boolean))];
+    const accountIds = [...new Set(transactions.map((t: any) => t.accountId).filter(Boolean))];
+    const transactionIds = transactions.map((t: any) => t.id);
+
+    // Cargar transactionTags (usar chunking para respetar límite de 10)
+    let tagsSnapshotDocs: any[] = [];
+    if (transactionIds.length > 0) {
+      const transactionIdChunks = chunkArray(transactionIds, 10);
+      const tagSnapshots = await Promise.all(
+        transactionIdChunks.map(chunk =>
+          db.collection("transactionTags").where("transactionId", "in", chunk).get()
+        )
+      );
+      tagsSnapshotDocs = tagSnapshots.flatMap(snapshot => snapshot.docs);
+    }
+
+    // Cargar categories, accounts y tags usando helper function (corrige __name__)
+    const [categories, accounts] = await Promise.all([
+      getDocumentsByIds("categories", categoryIds),
+      getDocumentsByIds("accounts", accountIds)
+    ]);
+
+    const categoriesMap = new Map(categories.map(cat => [cat.id, cat]));
+    const accountsMap = new Map(accounts.map(acc => [acc.id, acc]));
+    
+    // Cargar tags
+    const tagIds = [...new Set(tagsSnapshotDocs.map(doc => doc.data().tagId))];
+    const tags = await getDocumentsByIds("tags", tagIds);
+    const tagsMap = new Map(tags.map(tag => [tag.id, tag]));
+    
+    const transactionTagsMap = new Map<string, any[]>();
+    tagsSnapshotDocs.forEach(doc => {
+      const data = doc.data();
+      const txId = data.transactionId;
+      if (!transactionTagsMap.has(txId)) {
+        transactionTagsMap.set(txId, []);
+      }
+      const tag = tagsMap.get(data.tagId);
+      if (tag) {
+        transactionTagsMap.get(txId)!.push(tag);
+      }
+    });
+
+    // Enriquecer transacciones con relaciones
+    transactions = transactions.map((tx: any) => ({
+      ...tx,
+      category: tx.categoryId ? categoriesMap.get(tx.categoryId) || null : null,
+      account: accountsMap.get(tx.accountId) || null,
+      tags: transactionTagsMap.get(tx.id) || []
+    }));
+
+    res.json({ transactions, page: Number(page), pageSize: take, total });
+  } catch (error: any) {
+    console.error("List transactions error:", error);
+    res.status(500).json({ error: error.message || "Error al listar transacciones" });
   }
-  
-  const skip = (Number(page) - 1) * Number(pageSize);
-  const take = Number(pageSize);
-  
-  const orderBy: any = {};
-  orderBy[sortBy || "occurredAt"] = sortOrder || "desc";
-  
-  const [rows, total] = await Promise.all([
-    prisma.transaction.findMany({ 
-      where, 
-      include: {
-        category: true,
-        account: true,
-        tags: {
-          include: {
-            tag: true
-          }
-        }
-      },
-      orderBy, 
-      skip, 
-      take 
-    }),
-    prisma.transaction.count({ where })
-  ]);
-  
-  // Formatear tags
-  const transactions = rows.map(tx => ({
-    ...tx,
-    tags: tx.tags.map(tt => tt.tag)
-  }));
-  
-  res.json({ transactions, page: Number(page), pageSize: take, total });
 }
 
 export async function createTransaction(req: AuthRequest, res: Response) {
-  const parsed = TransactionSchema.safeParse(req.body);
-  if (!parsed.success) {
-    // Formatear errores de Zod de manera legible
-    const errors = parsed.error.errors.map(e => `${e.path.join(".")}: ${e.message}`).join(", ");
-    return res.status(400).json({ error: `Error de validación: ${errors}` });
-  }
-  const { accountId, categoryId, type, amountCents, currencyCode, occurredAt, description, isRecurring, recurringRule, nextOccurrence } = parsed.data;
-  const notificationSchedule = (req.body as any).notificationSchedule ? JSON.stringify((req.body as any).notificationSchedule) : null;
-  const isPaid = (req.body as any).isPaid || false;
-  const totalOccurrences = (req.body as any).totalOccurrences !== undefined ? (req.body as any).totalOccurrences : null;
-  const remainingOccurrences = (req.body as any).remainingOccurrences !== undefined ? (req.body as any).remainingOccurrences : null;
+  try {
+    const parsed = TransactionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const errors = parsed.error.errors.map(e => `${e.path.join(".")}: ${e.message}`).join(", ");
+      return res.status(400).json({ error: `Error de validación: ${errors}` });
+    }
 
-  // Validar que amountCents sea positivo y entero (ya redondeado)
-  if (amountCents <= 0) {
-    return res.status(400).json({ error: "El importe debe ser mayor a 0" });
-  }
+    const { accountId, categoryId, type, amountCents, currencyCode, occurredAt, description, isRecurring, recurringRule, nextOccurrence } = parsed.data;
+    const notificationSchedule = (req.body as any).notificationSchedule ? JSON.stringify((req.body as any).notificationSchedule) : null;
+    const isPaid = (req.body as any).isPaid || false;
+    const totalOccurrences = (req.body as any).totalOccurrences !== undefined ? (req.body as any).totalOccurrences : null;
+    const remainingOccurrences = (req.body as any).remainingOccurrences !== undefined ? (req.body as any).remainingOccurrences : null;
 
-  // Verificar que la categoría existe y pertenece al usuario (OBLIGATORIO)
-  if (!categoryId) {
-    return res.status(400).json({ error: "La categoría es obligatoria" });
-  }
-  const category = await prisma.category.findFirst({
-    where: { id: categoryId, userId: req.user!.userId }
-  });
-  if (!category) {
-    return res.status(400).json({ error: "Categoría no válida" });
-  }
+    // Validar que amountCents sea positivo y entero
+    if (amountCents <= 0) {
+      return res.status(400).json({ error: "El importe debe ser mayor a 0" });
+    }
 
-  // Verificar que la cuenta existe y pertenece al usuario
-  const account = await prisma.account.findFirst({
-    where: { id: accountId, userId: req.user!.userId }
-  });
-  if (!account) {
-    return res.status(400).json({ error: "Cuenta no válida" });
-  }
+    // Verificar que la categoría existe y pertenece al usuario (OBLIGATORIO)
+    if (!categoryId) {
+      return res.status(400).json({ error: "La categoría es obligatoria" });
+    }
+    const categoryDoc = await db.collection("categories").doc(categoryId).get();
+    if (!categoryDoc.exists) {
+      return res.status(400).json({ error: "Categoría no válida" });
+    }
+    const categoryData = categoryDoc.data()!;
+    if (categoryData.userId !== req.user!.userId) {
+      return res.status(400).json({ error: "Categoría no válida" });
+    }
 
-  const tx = await prisma.transaction.create({
-    data: {
+    // Verificar que la cuenta existe y pertenece al usuario
+    const accountDoc = await db.collection("accounts").doc(accountId).get();
+    if (!accountDoc.exists) {
+      return res.status(400).json({ error: "Cuenta no válida" });
+    }
+    const accountData = accountDoc.data()!;
+    if (accountData.userId !== req.user!.userId) {
+      return res.status(400).json({ error: "Cuenta no válida" });
+    }
+
+    const transactionData = {
       userId: req.user!.userId,
       accountId,
-      categoryId, // Validado arriba como obligatorio
+      categoryId,
       type,
-      amountCents: Math.round(Number(amountCents)), // Asegurar que sea entero
-      currencyCode: currencyCode || account.currencyCode,
-      occurredAt: new Date(occurredAt),
+      amountCents: Math.round(Number(amountCents)),
+      currencyCode: currencyCode || accountData.currencyCode,
+      occurredAt: Timestamp.fromDate(new Date(occurredAt)),
       description: description || null,
       isRecurring: isRecurring || false,
       recurringRule: recurringRule || null,
-      nextOccurrence: nextOccurrence ? new Date(nextOccurrence) : null,
+      nextOccurrence: nextOccurrence ? Timestamp.fromDate(new Date(nextOccurrence)) : null,
       notificationSchedule: notificationSchedule || null,
       isPaid: isRecurring ? isPaid : false,
       totalOccurrences: isRecurring ? totalOccurrences : null,
-      remainingOccurrences: isRecurring ? remainingOccurrences : null
-    },
-    include: {
-      category: {
-        include: {
-          parent: true
-        }
-      }
-    }
-  });
+      remainingOccurrences: isRecurring ? remainingOccurrences : null,
+      createdAt: Timestamp.now()
+    };
 
-  // Si la transacción usa una subcategoría de "Deudas", actualizar el progreso de la deuda
-  if (tx.category && tx.category.parent && tx.category.parent.name === "Deudas" && type === "EXPENSE") {
-    try {
-      // Buscar la deuda que corresponde a esta subcategoría (por nombre)
-      const debt = await prisma.debt.findFirst({
-        where: {
-          userId: req.user!.userId,
-          description: tx.category.name
-        }
-      });
+    // Si la transacción usa una subcategoría de "Deudas", preparar actualización atómica
+    let debtRef: FirebaseFirestore.DocumentReference | null = null;
+    let newPaidInstallments: number | null = null;
+    
+    if (categoryData.parentId && type === "EXPENSE") {
+      try {
+        const parentCategoryDoc = await db.collection("categories").doc(categoryData.parentId).get();
+        if (parentCategoryDoc.exists) {
+          const parentCategoryData = parentCategoryDoc.data()!;
+          if (parentCategoryData.name === "Deudas") {
+            // Buscar la deuda que corresponde a esta subcategoría (por nombre)
+            const debtsSnapshot = await db.collection("debts")
+              .where("userId", "==", req.user!.userId)
+              .where("description", "==", categoryData.name)
+              .limit(1)
+              .get();
 
-      if (debt && debt.paidInstallments < debt.totalInstallments) {
-        // Incrementar las cuotas pagadas
-        const newPaidInstallments = Math.min(debt.paidInstallments + 1, debt.totalInstallments);
-        await prisma.debt.update({
-          where: { id: debt.id },
-          data: {
-            paidInstallments: newPaidInstallments
+            if (!debtsSnapshot.empty) {
+              const debtDoc = debtsSnapshot.docs[0];
+              const debtData = debtDoc.data();
+              if (debtData.paidInstallments < debtData.totalInstallments) {
+                debtRef = db.collection("debts").doc(debtDoc.id);
+                newPaidInstallments = Math.min(debtData.paidInstallments + 1, debtData.totalInstallments);
+              }
+            }
           }
-        });
-        console.log(`Deuda "${debt.description}" actualizada: ${newPaidInstallments}/${debt.totalInstallments} cuotas pagadas`);
+        }
+      } catch (error: any) {
+        console.error("Error al buscar deuda para actualización:", error);
       }
-    } catch (error: any) {
-      // No fallar la creación de la transacción si hay un error al actualizar la deuda
-      console.error("Error al actualizar el progreso de la deuda:", error);
     }
-  }
 
-  res.status(201).json({ transaction: tx });
+    // Usar batch write para atomicidad: crear transacción y actualizar deuda en una sola operación
+    const batch = db.batch();
+    const transactionRef = db.collection("transactions").doc();
+    
+    batch.set(transactionRef, objectToFirestore(transactionData));
+    
+    if (debtRef && newPaidInstallments !== null) {
+      batch.update(debtRef, {
+        paidInstallments: newPaidInstallments,
+        updatedAt: Timestamp.now()
+      });
+    }
+    
+    await batch.commit();
+    
+    const tx = docToObject(await transactionRef.get());
+    
+    if (debtRef && newPaidInstallments !== null) {
+      console.log(`Deuda actualizada atómicamente: ${newPaidInstallments}/${(await debtRef.get()).data()!.totalInstallments} cuotas pagadas`);
+    }
+
+    // Cargar relaciones para la respuesta
+    const [category, account] = await Promise.all([
+      db.collection("categories").doc(categoryId).get(),
+      db.collection("accounts").doc(accountId).get()
+    ]);
+
+    const responseTx = {
+      ...tx,
+      category: category.exists ? docToObject(category) : null,
+      account: account.exists ? docToObject(account) : null
+    };
+
+    res.status(201).json({ transaction: responseTx });
+  } catch (error: any) {
+    console.error("Create transaction error:", error);
+    res.status(500).json({ error: error.message || "Error al crear transacción" });
+  }
 }
 
 export async function updateTransaction(req: AuthRequest, res: Response) {
-  const { accountId, categoryId, type, amountCents, occurredAt, description, isRecurring, recurringRule, nextOccurrence, isPaid, totalOccurrences, remainingOccurrences } = req.body || {};
+  try {
+    const transactionId = req.params.id;
+    const transactionDoc = await db.collection("transactions").doc(transactionId).get();
 
-  const updateData: any = {
-    accountId: accountId || undefined,
-    categoryId: categoryId ?? undefined,
-    type: type || undefined,
-    amountCents: amountCents !== undefined ? Math.round(Number(amountCents)) : undefined,
-    occurredAt: occurredAt ? new Date(occurredAt) : undefined,
-    description: description || undefined,
-    isRecurring: isRecurring ?? undefined,
-    recurringRule: recurringRule || undefined,
-    nextOccurrence: nextOccurrence ? new Date(nextOccurrence) : undefined,
-    isPaid: isPaid !== undefined ? isPaid : undefined,
-    totalOccurrences: totalOccurrences !== undefined ? totalOccurrences : undefined,
-    remainingOccurrences: remainingOccurrences !== undefined ? remainingOccurrences : undefined,
-  };
-  
-  const tx = await prisma.transaction.update({
-    where: { id: req.params.id, userId: req.user!.userId },
-    data: updateData
-  });
-  res.json({ transaction: tx });
+    if (!transactionDoc.exists) {
+      return res.status(404).json({ error: "Transacción no encontrada" });
+    }
+
+    const transactionData = transactionDoc.data()!;
+    if (transactionData.userId !== req.user!.userId) {
+      return res.status(403).json({ error: "No autorizado" });
+    }
+
+    const parsed = TransactionSchema.partial().safeParse(req.body);
+    if (!parsed.success) {
+      const errors = parsed.error.errors.map(e => `${e.path.join(".")}: ${e.message}`).join(", ");
+      return res.status(400).json({ error: `Error de validación: ${errors}` });
+    }
+
+    const updateData: any = {};
+    if (parsed.data.accountId !== undefined) updateData.accountId = parsed.data.accountId;
+    if (parsed.data.categoryId !== undefined) updateData.categoryId = parsed.data.categoryId;
+    if (parsed.data.type !== undefined) updateData.type = parsed.data.type;
+    if (parsed.data.amountCents !== undefined) updateData.amountCents = Math.round(Number(parsed.data.amountCents));
+    if (parsed.data.currencyCode !== undefined) updateData.currencyCode = parsed.data.currencyCode;
+    if (parsed.data.occurredAt !== undefined) updateData.occurredAt = Timestamp.fromDate(new Date(parsed.data.occurredAt));
+    if (parsed.data.description !== undefined) updateData.description = parsed.data.description || null;
+    if (parsed.data.isRecurring !== undefined) updateData.isRecurring = parsed.data.isRecurring;
+    if (parsed.data.recurringRule !== undefined) updateData.recurringRule = parsed.data.recurringRule || null;
+    if (parsed.data.nextOccurrence !== undefined) updateData.nextOccurrence = parsed.data.nextOccurrence ? Timestamp.fromDate(new Date(parsed.data.nextOccurrence)) : null;
+    if ((req.body as any).notificationSchedule !== undefined) {
+      updateData.notificationSchedule = (req.body as any).notificationSchedule ? JSON.stringify((req.body as any).notificationSchedule) : null;
+    }
+    if ((req.body as any).isPaid !== undefined) updateData.isPaid = (req.body as any).isPaid;
+    if ((req.body as any).totalOccurrences !== undefined) updateData.totalOccurrences = (req.body as any).totalOccurrences;
+    if ((req.body as any).remainingOccurrences !== undefined) updateData.remainingOccurrences = (req.body as any).remainingOccurrences;
+
+    await db.collection("transactions").doc(transactionId).update(objectToFirestore(updateData));
+
+    const updatedDoc = await db.collection("transactions").doc(transactionId).get();
+    res.json({ transaction: docToObject(updatedDoc) });
+  } catch (error: any) {
+    console.error("Update transaction error:", error);
+    res.status(500).json({ error: error.message || "Error al actualizar transacción" });
+  }
 }
 
 export async function deleteTransaction(req: AuthRequest, res: Response) {
-  await prisma.transaction.delete({ where: { id: req.params.id, userId: req.user!.userId }});
-  res.status(204).send();
+  try {
+    const transactionId = req.params.id;
+    const transactionDoc = await db.collection("transactions").doc(transactionId).get();
+
+    if (!transactionDoc.exists) {
+      return res.status(404).json({ error: "Transacción no encontrada" });
+    }
+
+    const transactionData = transactionDoc.data()!;
+    if (transactionData.userId !== req.user!.userId) {
+      return res.status(403).json({ error: "No autorizado" });
+    }
+
+    // Eliminar tags asociados
+    const tagsSnapshot = await db.collection("transactionTags")
+      .where("transactionId", "==", transactionId)
+      .get();
+    
+    const batch = db.batch();
+    tagsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+    batch.delete(db.collection("transactions").doc(transactionId));
+    await batch.commit();
+
+    res.status(204).send();
+  } catch (error: any) {
+    console.error("Delete transaction error:", error);
+    res.status(500).json({ error: error.message || "Error al eliminar transacción" });
+  }
 }
-
-

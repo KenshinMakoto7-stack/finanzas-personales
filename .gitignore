@@ -15,5 +15,8 @@ coverage/
 *.swo
 *~
 
+# Firebase credentials
+apps/api/firebase-service-account.json
+
 
 

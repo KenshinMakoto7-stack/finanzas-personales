@@ -1,24 +1,46 @@
 import { Response } from "express";
-import { prisma } from "../lib/db.js";
+import { db } from "../lib/firebase.js";
 import { AuthRequest } from "../server/middleware/auth.js";
+import { getBudgetSummaryForDate } from "../services/budget.service.js";
+import { docToObject, getDocumentsByIds } from "../lib/firestore-helpers.js";
+import { Timestamp } from "firebase-admin/firestore";
 
-// Registrar subscription para notificaciones push
 export async function registerSubscription(req: AuthRequest, res: Response) {
-  const { endpoint, keys } = req.body;
-  const userId = req.user!.userId;
-
-  if (!endpoint || !keys) {
-    return res.status(400).json({ error: "Endpoint y keys son requeridos" });
-  }
-
   try {
-    // En una implementación real, guardarías esto en la base de datos
-    // Por ahora, solo confirmamos que se recibió
-    // TODO: Crear modelo PushSubscription en Prisma
-    
-    res.json({ 
-      success: true, 
-      message: "Suscripción registrada correctamente" 
+    const { endpoint, keys } = req.body;
+    const userId = req.user!.userId;
+
+    if (!endpoint || !keys) {
+      return res.status(400).json({ error: "Endpoint y keys son requeridos" });
+    }
+
+    // Guardar suscripción en Firestore
+    const subscriptionData = {
+      userId,
+      endpoint,
+      keys,
+      createdAt: Timestamp.now()
+    };
+
+    // Verificar si ya existe
+    const existingSnapshot = await db.collection("notificationSubscriptions")
+      .where("userId", "==", userId)
+      .where("endpoint", "==", endpoint)
+      .limit(1)
+      .get();
+
+    if (!existingSnapshot.empty) {
+      await db.collection("notificationSubscriptions").doc(existingSnapshot.docs[0].id).update({
+        keys,
+        updatedAt: Timestamp.now()
+      });
+    } else {
+      await db.collection("notificationSubscriptions").add(subscriptionData);
+    }
+
+    res.json({
+      success: true,
+      message: "Suscripción registrada correctamente"
     });
   } catch (error: any) {
     console.error("Error registering subscription:", error);
@@ -26,40 +48,57 @@ export async function registerSubscription(req: AuthRequest, res: Response) {
   }
 }
 
-// Obtener notificaciones pendientes para el usuario
 export async function getPendingNotifications(req: AuthRequest, res: Response) {
-  const userId = req.user!.userId;
-  const { date } = req.query;
-
   try {
+    const userId = req.user!.userId;
+    const { date } = req.query;
+
+    // Obtener usuario
+    const userDoc = await db.collection("users").doc(userId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    const userData = userDoc.data()!;
+    const tz = userData.timeZone || "UTC";
     const targetDate = date ? new Date(date as string) : new Date();
-    
+
     const notifications: any[] = [];
 
     // 1. Verificar transacciones recurrentes que deben ejecutarse hoy
-    const recurringTransactions = await prisma.transaction.findMany({
-      where: {
-        userId,
-        isRecurring: true,
-        nextOccurrence: {
-          lte: new Date(targetDate.getTime() + 24 * 60 * 60 * 1000) // Próximas 24 horas
-        }
-      },
-      include: {
-        category: true,
-        account: true
-      }
-    });
+    const tomorrow = new Date(targetDate);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-    recurringTransactions.forEach(tx => {
+    const recurringSnapshot = await db.collection("transactions")
+      .where("userId", "==", userId)
+      .where("isRecurring", "==", true)
+      .where("nextOccurrence", "<=", Timestamp.fromDate(tomorrow))
+      .get();
+
+    const recurringTransactions = recurringSnapshot.docs.map(doc => docToObject(doc));
+
+    // Cargar relaciones
+    const categoryIds = [...new Set(recurringTransactions.map((t: any) => t.categoryId).filter(Boolean))];
+    const accountIds = [...new Set(recurringTransactions.map((t: any) => t.accountId))];
+
+    const [categories, accounts] = await Promise.all([
+      getDocumentsByIds("categories", categoryIds),
+      getDocumentsByIds("accounts", accountIds)
+    ]);
+
+    const categoriesMap = new Map(categories.map((c: any) => [c.id, c]));
+    const accountsMap = new Map(accounts.map((a: any) => [a.id, a]));
+
+    recurringTransactions.forEach((tx: any) => {
       if (tx.nextOccurrence) {
-        const txDate = new Date(tx.nextOccurrence);
+        const txDate = tx.nextOccurrence instanceof Date ? tx.nextOccurrence : new Date(tx.nextOccurrence);
         const today = new Date(targetDate);
         if (txDate.toDateString() === today.toDateString()) {
+          const category = tx.categoryId ? categoriesMap.get(tx.categoryId) : null;
           notifications.push({
             type: "RECURRING_TRANSACTION",
             title: "Transacción Recurrente",
-            message: `Recordatorio: ${tx.description || "Transacción"} - ${tx.category?.name || ""}`,
+            message: `Recordatorio: ${tx.description || "Transacción"} - ${category?.name || ""}`,
             data: { transactionId: tx.id },
             priority: "high"
           });
@@ -72,42 +111,44 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd = new Date(year, month, 0);
 
-    const budgets = await prisma.categoryBudget.findMany({
-      where: {
-        userId,
-        month: monthStart
-      },
-      include: {
-        category: true
-      }
-    });
+    const budgetsSnapshot = await db.collection("categoryBudgets")
+      .where("userId", "==", userId)
+      .where("month", "==", Timestamp.fromDate(monthStart))
+      .get();
+
+    const budgets = budgetsSnapshot.docs.map(doc => docToObject(doc));
+
+    // Cargar categorías
+    const budgetCategoryIds = [...new Set(budgets.map((b: any) => b.categoryId))];
+    const budgetCategories = await getDocumentsByIds("categories", budgetCategoryIds);
+
+    const budgetCategoriesMap = new Map(budgetCategories.map((c: any) => [c.id, c]));
 
     for (const budget of budgets) {
-      const spent = await prisma.transaction.aggregate({
-        where: {
-          userId,
-          categoryId: budget.categoryId,
-          type: "EXPENSE",
-          occurredAt: {
-            gte: monthStart,
-            lte: monthEnd
-          }
-        },
-        _sum: {
-          amountCents: true
-        }
-      });
+      // Obtener gastos del mes
+      const expensesSnapshot = await db.collection("transactions")
+        .where("userId", "==", userId)
+        .where("categoryId", "==", budget.categoryId)
+        .where("type", "==", "EXPENSE")
+        .where("occurredAt", ">=", Timestamp.fromDate(monthStart))
+        .where("occurredAt", "<=", Timestamp.fromDate(monthEnd))
+        .get();
 
-      const spentCents = spent._sum.amountCents || 0;
-      const percentage = budget.budgetCents > 0 
-        ? Math.round((spentCents / budget.budgetCents) * 100) 
+      const spentCents = expensesSnapshot.docs.reduce((sum, doc) => {
+        return sum + (doc.data().amountCents || 0);
+      }, 0);
+
+      const percentage = budget.budgetCents > 0
+        ? Math.round((spentCents / budget.budgetCents) * 100)
         : 0;
+
+      const category = budgetCategoriesMap.get(budget.categoryId);
 
       if (percentage >= budget.alertThreshold && percentage < 100) {
         notifications.push({
           type: "BUDGET_ALERT",
           title: "Alerta de Presupuesto",
-          message: `Has alcanzado el ${percentage}% del presupuesto de ${budget.category.name}`,
+          message: `Has alcanzado el ${percentage}% del presupuesto de ${category?.name || "Categoría"}`,
           data: { budgetId: budget.id, categoryId: budget.categoryId },
           priority: percentage >= 90 ? "high" : "normal"
         });
@@ -115,7 +156,7 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
         notifications.push({
           type: "BUDGET_EXCEEDED",
           title: "Presupuesto Excedido",
-          message: `Has excedido el presupuesto de ${budget.category.name}`,
+          message: `Has excedido el presupuesto de ${category?.name || "Categoría"}`,
           data: { budgetId: budget.id, categoryId: budget.categoryId },
           priority: "high"
         });
@@ -123,34 +164,34 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
     }
 
     // 3. Verificar metas de ahorro
-    const goal = await prisma.monthlyGoal.findFirst({
-      where: {
-        userId,
-        month: monthStart
-      }
-    });
+    const goalSnapshot = await db.collection("monthlyGoals")
+      .where("userId", "==", userId)
+      .where("month", "==", Timestamp.fromDate(monthStart))
+      .limit(1)
+      .get();
 
-    if (goal) {
-      const transactions = await prisma.transaction.findMany({
-        where: {
-          userId,
-          occurredAt: {
-            gte: monthStart,
-            lte: monthEnd
-          }
-        }
-      });
+    if (!goalSnapshot.empty) {
+      const goal = docToObject(goalSnapshot.docs[0]);
+
+      // Obtener transacciones del mes
+      const transactionsSnapshot = await db.collection("transactions")
+        .where("userId", "==", userId)
+        .where("occurredAt", ">=", Timestamp.fromDate(monthStart))
+        .where("occurredAt", "<=", Timestamp.fromDate(monthEnd))
+        .get();
+
+      const transactions = transactionsSnapshot.docs.map(doc => docToObject(doc));
 
       const totalIncome = transactions
-        .filter(t => t.type === "INCOME")
-        .reduce((sum, t) => sum + t.amountCents, 0);
+        .filter((t: any) => t.type === "INCOME")
+        .reduce((sum, t: any) => sum + t.amountCents, 0);
       const totalExpenses = transactions
-        .filter(t => t.type === "EXPENSE")
-        .reduce((sum, t) => sum + t.amountCents, 0);
-      
+        .filter((t: any) => t.type === "EXPENSE")
+        .reduce((sum, t: any) => sum + t.amountCents, 0);
+
       const saved = totalIncome - totalExpenses;
-      const progress = goal.savingGoalCents > 0 
-        ? Math.round((saved / goal.savingGoalCents) * 100) 
+      const progress = goal.savingGoalCents > 0
+        ? Math.round((saved / goal.savingGoalCents) * 100)
         : 0;
 
       if (progress >= 100) {
@@ -179,9 +220,7 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
   }
 }
 
-// Marcar notificación como leída
 export async function markAsRead(req: AuthRequest, res: Response) {
   // En una implementación real, guardarías esto en la base de datos
   res.json({ success: true });
 }
-

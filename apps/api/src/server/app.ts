@@ -4,7 +4,9 @@ import helmet from "helmet";
 import morgan from "morgan";
 import pinoHttp from "pino-http";
 import swaggerUi from "swagger-ui-express";
+import rateLimit from "express-rate-limit";
 import { errorHandler } from "./middleware/error.js";
+import { initMonitoring, sentryErrorHandler, requestLogger, getHealthStatus, logger } from "../lib/monitoring.js";
 import authRoutes from "../routes/auth.routes.js";
 import accountsRoutes from "../routes/accounts.routes.js";
 import categoriesRoutes from "../routes/categories.routes.js";
@@ -24,7 +26,41 @@ import exchangeRoutes from "../routes/exchange.routes.js";
 import debtsRoutes from "../routes/debts.routes.js";
 import { openApiDoc } from "../swagger/openapi.js";
 
+// Inicializar monitoreo (Sentry)
+initMonitoring();
+
 const app = express();
+
+// Request logging estructurado
+app.use(requestLogger());
+
+// Rate Limiting - General (100 requests per 15 min)
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Demasiadas solicitudes. Intenta nuevamente en unos minutos." },
+  skip: (req) => req.path === "/health" // No limitar health checks
+});
+
+// Rate Limiting - Auth (5 requests per 15 min - más estricto para prevenir brute force)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Demasiados intentos de autenticación. Intenta nuevamente en 15 minutos." }
+});
+
+// Rate Limiting - API general (más permisivo para usuarios autenticados)
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minuto
+  max: 60, // 60 requests por minuto
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Demasiadas solicitudes. Intenta nuevamente en un momento." }
+});
 
 app.use(helmet());
 // CORS: Permitir origen desde variable de entorno o localhost en desarrollo
@@ -69,13 +105,29 @@ app.get("/", (_req, res) => res.json({
   }
 }));
 
+// Health check básico
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+// Health check detallado con métricas
+app.get("/health/detailed", async (_req, res) => {
+  try {
+    const health = await getHealthStatus();
+    const statusCode = health.status === "healthy" ? 200 : 503;
+    res.status(statusCode).json(health);
+  } catch (error) {
+    logger.error("Health check failed", error as Error);
+    res.status(503).json({ status: "error", error: "Health check failed" });
+  }
+});
+
+// Aplicar rate limiting general
+app.use(generalLimiter);
 
 // Docs (OpenAPI)
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openApiDoc));
 
-// Rutas
-app.use("/auth", authRoutes);
+// Rutas con rate limiting específico
+app.use("/auth", authLimiter, authRoutes);
 app.use("/accounts", accountsRoutes);
 app.use("/categories", categoriesRoutes);
 app.use("/transactions", transactionsRoutes);
@@ -92,6 +144,9 @@ app.use("/search", searchRoutes);
 app.use("/notifications", notificationsRoutes);
 app.use("/exchange", exchangeRoutes);
 app.use("/debts", debtsRoutes);
+
+// Sentry error handler (debe ir antes del error handler general)
+app.use(sentryErrorHandler());
 
 app.use(errorHandler);
 export default app;

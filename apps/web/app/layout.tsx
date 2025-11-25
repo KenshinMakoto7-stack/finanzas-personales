@@ -1,6 +1,7 @@
 import "./globals.css";
 import GlobalSearch from "../components/GlobalSearch";
 import NotificationManager from "../components/NotificationManager";
+import { Providers } from "./providers";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -15,9 +16,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
       </head>
       <body style={{ margin: 0 }}>
-        {children}
-        <GlobalSearch />
-        <NotificationManager />
+        <Providers>
+          {children}
+          <GlobalSearch />
+          <NotificationManager />
+        </Providers>
       </body>
     </html>
   );

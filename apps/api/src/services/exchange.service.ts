@@ -1,35 +1,62 @@
 /**
  * Servicio de Conversión de Monedas
- * Obtiene el tipo de cambio USD/UYU del Banco Central del Uruguay
+ * Obtiene el tipo de cambio USD/UYU con cache en memoria y Firestore
  */
+
+import { db } from "../lib/firebase.js";
+import { Timestamp } from "firebase-admin/firestore";
 
 interface ExchangeRateCache {
   rate: number;
   date: string; // YYYY-MM-DD
   source: string;
+  timestamp: number;
 }
 
-let exchangeRateCache: ExchangeRateCache | null = null;
-const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 horas
+// Cache en memoria (rápido)
+let memoryCache: ExchangeRateCache | null = null;
+const MEMORY_CACHE_MS = 6 * 60 * 60 * 1000; // 6 horas
+const FIRESTORE_CACHE_MS = 24 * 60 * 60 * 1000; // 24 horas
 
 /**
  * Obtiene el tipo de cambio USD/UYU
  * Prioridad:
- * 1. Cache (si es del día actual)
- * 2. API pública de tipo de cambio
- * 3. Valor por defecto configurado
+ * 1. Cache en memoria (si es reciente)
+ * 2. Cache en Firestore (distribuido)
+ * 3. API pública de tipo de cambio
+ * 4. Valor por defecto configurado
  */
 export async function getUSDToUYUExchangeRate(): Promise<number> {
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const now = Date.now();
+  const today = new Date().toISOString().slice(0, 10);
 
-  // Verificar cache
-  if (exchangeRateCache && exchangeRateCache.date === today) {
-    return exchangeRateCache.rate;
+  // 1. Verificar cache en memoria
+  if (memoryCache && (now - memoryCache.timestamp) < MEMORY_CACHE_MS) {
+    return memoryCache.rate;
   }
 
-  // Intentar obtener de API pública
+  // 2. Verificar cache en Firestore (distribuido entre instancias)
   try {
-    // Usar exchangerate-api.com como fuente (gratuita, sin API key para USD/UYU)
+    const cacheDoc = await db.collection("_cache").doc("exchange_rates").get();
+    if (cacheDoc.exists) {
+      const data = cacheDoc.data();
+      const cacheTimestamp = data?.timestamp?.toMillis?.() || 0;
+      if ((now - cacheTimestamp) < FIRESTORE_CACHE_MS && data?.USD_UYU) {
+        memoryCache = {
+          rate: data.USD_UYU,
+          date: today,
+          source: 'firestore-cache',
+          timestamp: now
+        };
+        return data.USD_UYU;
+      }
+    }
+  } catch (e) {
+    console.warn('Error leyendo cache de Firestore:', e);
+  }
+
+  // 3. Obtener de API pública
+  try {
     const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD', {
       headers: { 'Accept': 'application/json' }
     });
@@ -39,11 +66,16 @@ export async function getUSDToUYUExchangeRate(): Promise<number> {
       const rate = data.rates?.UYU;
       
       if (rate && typeof rate === 'number' && rate > 0) {
-        exchangeRateCache = {
-          rate,
-          date: today,
+        // Guardar en memoria
+        memoryCache = { rate, date: today, source: 'exchangerate-api', timestamp: now };
+        
+        // Guardar en Firestore (async, no bloquea)
+        db.collection("_cache").doc("exchange_rates").set({
+          USD_UYU: rate,
+          timestamp: Timestamp.now(),
           source: 'exchangerate-api'
-        };
+        }).catch(e => console.warn('Error guardando cache:', e));
+        
         return rate;
       }
     }
@@ -51,24 +83,16 @@ export async function getUSDToUYUExchangeRate(): Promise<number> {
     console.warn('Error obteniendo tipo de cambio de API:', error);
   }
 
-  // Fallback: Intentar obtener de BCU (scraping o valor por defecto)
-  // El BCU publica el tipo de cambio en su sitio web, pero no tiene API pública
-  // Por ahora usamos un valor por defecto que puede ser configurado
+  // 4. Fallback: usar cache viejo o valor por defecto
   const defaultRate = parseFloat(process.env.DEFAULT_USD_UYU_RATE || '40.0');
   
-  // Si hay cache de días anteriores, usar ese valor como fallback
-  if (exchangeRateCache) {
-    console.warn(`Usando tipo de cambio cacheado del ${exchangeRateCache.date}: ${exchangeRateCache.rate}`);
-    return exchangeRateCache.rate;
+  if (memoryCache) {
+    console.warn(`Usando tipo de cambio cacheado: ${memoryCache.rate}`);
+    return memoryCache.rate;
   }
 
-  console.warn(`Usando tipo de cambio por defecto: ${defaultRate} (configurar DEFAULT_USD_UYU_RATE en .env)`);
-  exchangeRateCache = {
-    rate: defaultRate,
-    date: today,
-    source: 'default'
-  };
-
+  console.warn(`Usando tipo de cambio por defecto: ${defaultRate}`);
+  memoryCache = { rate: defaultRate, date: today, source: 'default', timestamp: now };
   return defaultRate;
 }
 
@@ -130,15 +154,117 @@ export async function getCurrentExchangeRate(): Promise<{ rate: number; date: st
   const rate = await getUSDToUYUExchangeRate();
   return {
     rate,
-    date: exchangeRateCache?.date || new Date().toISOString().slice(0, 10),
-    source: exchangeRateCache?.source || 'default'
+    date: memoryCache?.date || new Date().toISOString().slice(0, 10),
+    source: memoryCache?.source || 'default'
   };
+}
+
+/**
+ * Obtiene el rate de conversión entre dos monedas (optimizado para batch)
+ * Retorna un Map con los rates necesarios
+ */
+export async function getExchangeRatesMap(
+  fromCurrencies: string[],
+  toCurrency: string
+): Promise<Map<string, number>> {
+  const rateMap = new Map<string, number>();
+  
+  // Obtener rate USD/UYU una vez
+  if (fromCurrencies.includes('USD') && toCurrency === 'UYU') {
+    const rate = await getUSDToUYUExchangeRate();
+    rateMap.set('USD->UYU', rate);
+  } else if (fromCurrencies.includes('UYU') && toCurrency === 'USD') {
+    const rate = await getUSDToUYUExchangeRate();
+    rateMap.set('UYU->USD', 1 / rate);
+  }
+  
+  // Agregar conversión identidad
+  rateMap.set(`${toCurrency}->${toCurrency}`, 1);
+  
+  return rateMap;
+}
+
+/**
+ * Convierte un monto usando un rate pre-calculado (síncrono, para batch)
+ */
+export function convertAmountWithRate(
+  amountCents: number,
+  fromCurrency: string,
+  toCurrency: string,
+  rateMap: Map<string, number>
+): number {
+  if (fromCurrency === toCurrency) {
+    return amountCents;
+  }
+  
+  const key = `${fromCurrency}->${toCurrency}`;
+  const rate = rateMap.get(key);
+  
+  if (rate === undefined) {
+    console.warn(`Rate not found for ${key}, returning original amount`);
+    return amountCents;
+  }
+  
+  return Math.round(amountCents * rate);
 }
 
 /**
  * Fuerza la actualización del tipo de cambio (limpia cache)
  */
 export function clearExchangeRateCache(): void {
-  exchangeRateCache = null;
+  memoryCache = null;
+}
+
+/**
+ * Wrapper seguro para conversión de monedas
+ * Valida resultados y maneja errores para evitar corrupción de datos
+ */
+export async function safeConvertCurrency(
+  amount: number,
+  from: string,
+  to: string
+): Promise<number> {
+  try {
+    // Validar entrada
+    if (!isFinite(amount) || amount < 0) {
+      console.error(`Invalid amount for conversion: ${amount} ${from} -> ${to}`);
+      return amount; // Fallback seguro
+    }
+
+    // Si es la misma moneda, retornar sin conversión
+    if (from === to) {
+      return amount;
+    }
+
+    // Realizar conversión
+    const converted = await convertCurrency(amount, from, to);
+    
+    // Validar resultado
+    if (!isFinite(converted) || converted < 0 || isNaN(converted)) {
+      console.error(
+        `Invalid conversion result: ${amount} ${from} -> ${to}, result: ${converted}`
+      );
+      return amount; // Fallback seguro: retornar cantidad original
+    }
+    
+    // Verificar que la conversión es razonable (no más de 1000x o menos de 0.001x)
+    const ratio = converted / amount;
+    if (ratio > 1000 || ratio < 0.001) {
+      console.warn(
+        `Suspicious conversion ratio: ${ratio} for ${amount} ${from} -> ${to}, result: ${converted}`
+      );
+      // Aún así retornar el resultado, pero loguear la advertencia
+    }
+    
+    return converted;
+  } catch (error) {
+    console.error(
+      'Currency conversion failed:',
+      error instanceof Error ? error.message : String(error),
+      { amount, from, to }
+    );
+    // Fallback seguro: retornar cantidad original
+    return amount;
+  }
 }
 

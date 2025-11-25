@@ -1,7 +1,9 @@
 import { Response } from "express";
-import { prisma } from "../lib/db.js";
+import { db } from "../lib/firebase.js";
 import { AuthRequest } from "../server/middleware/auth.js";
 import { z } from "zod";
+import { objectToFirestore, docToObject } from "../lib/firestore-helpers.js";
+import { Timestamp } from "firebase-admin/firestore";
 
 const TagSchema = z.object({
   name: z.string().min(1),
@@ -9,116 +11,227 @@ const TagSchema = z.object({
 });
 
 export async function listTags(req: AuthRequest, res: Response) {
-  const tags = await prisma.tag.findMany({
-    where: { userId: req.user!.userId },
-    include: {
-      _count: {
-        select: { transactions: true }
-      }
-    },
-    orderBy: { name: "asc" }
-  });
+  try {
+    const snapshot = await db.collection("tags")
+      .where("userId", "==", req.user!.userId)
+      .orderBy("name", "asc")
+      .get();
 
-  const tagsWithCount = tags.map(tag => ({
-    ...tag,
-    transactionCount: tag._count.transactions
-  }));
+    const tags = snapshot.docs.map(doc => docToObject(doc));
 
-  res.json({ tags: tagsWithCount });
+    // Contar transacciones por tag
+    const tagsWithCount = await Promise.all(
+      tags.map(async (tag: any) => {
+        const transactionTagsSnapshot = await db.collection("transactionTags")
+          .where("tagId", "==", tag.id)
+          .count()
+          .get();
+        
+        const transactionCount = transactionTagsSnapshot.data().count;
+        return {
+          ...tag,
+          transactionCount
+        };
+      })
+    );
+
+    res.json({ tags: tagsWithCount });
+  } catch (error: any) {
+    console.error("List tags error:", error);
+    res.status(500).json({ error: error.message || "Error al listar tags" });
+  }
 }
 
 export async function createTag(req: AuthRequest, res: Response) {
-  const parsed = TagSchema.safeParse(req.body);
-  if (!parsed.success) {
-    const errors = parsed.error.errors.map(e => `${e.path.join(".")}: ${e.message}`).join(", ");
-    return res.status(400).json({ error: `Error de validación: ${errors}` });
+  try {
+    const parsed = TagSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const errors = parsed.error.errors.map(e => `${e.path.join(".")}: ${e.message}`).join(", ");
+      return res.status(400).json({ error: `Error de validación: ${errors}` });
+    }
+
+    const { name, color } = parsed.data;
+    const userId = req.user!.userId;
+
+    // Verificar que no exista un tag con el mismo nombre para este usuario
+    const existingSnapshot = await db.collection("tags")
+      .where("userId", "==", userId)
+      .where("name", "==", name)
+      .limit(1)
+      .get();
+
+    if (!existingSnapshot.empty) {
+      return res.status(409).json({ error: "Ya existe un tag con este nombre" });
+    }
+
+    const tagData = {
+      userId,
+      name,
+      color: color || "#667eea",
+      createdAt: Timestamp.now()
+    };
+
+    const docRef = await db.collection("tags").add(objectToFirestore(tagData));
+    const tag = docToObject(await docRef.get());
+
+    res.status(201).json({ tag });
+  } catch (error: any) {
+    console.error("Create tag error:", error);
+    res.status(500).json({ error: error.message || "Error al crear tag" });
   }
-
-  const { name, color } = parsed.data;
-  const userId = req.user!.userId;
-
-  const tag = await prisma.tag.create({
-    data: { userId, name, color }
-  });
-
-  res.status(201).json({ tag });
 }
 
 export async function updateTag(req: AuthRequest, res: Response) {
-  const { name, color } = req.body;
-  const userId = req.user!.userId;
-  const tagId = req.params.id;
+  try {
+    const { name, color } = req.body;
+    const userId = req.user!.userId;
+    const tagId = req.params.id;
 
-  const tag = await prisma.tag.update({
-    where: { id: tagId, userId },
-    data: {
-      ...(name !== undefined && { name }),
-      ...(color !== undefined && { color })
+    // Verificar que el tag existe y pertenece al usuario
+    const tagDoc = await db.collection("tags").doc(tagId).get();
+    if (!tagDoc.exists) {
+      return res.status(404).json({ error: "Tag no encontrado" });
     }
-  });
 
-  res.json({ tag });
+    const tagData = tagDoc.data()!;
+    if (tagData.userId !== userId) {
+      return res.status(403).json({ error: "No autorizado" });
+    }
+
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (color !== undefined) updateData.color = color;
+
+    await db.collection("tags").doc(tagId).update(objectToFirestore(updateData));
+
+    const updatedTag = docToObject(await db.collection("tags").doc(tagId).get());
+    res.json({ tag: updatedTag });
+  } catch (error: any) {
+    console.error("Update tag error:", error);
+    res.status(500).json({ error: error.message || "Error al actualizar tag" });
+  }
 }
 
 export async function deleteTag(req: AuthRequest, res: Response) {
-  const userId = req.user!.userId;
-  const tagId = req.params.id;
+  try {
+    const userId = req.user!.userId;
+    const tagId = req.params.id;
 
-  await prisma.tag.delete({
-    where: { id: tagId, userId }
-  });
+    // Verificar que el tag existe y pertenece al usuario
+    const tagDoc = await db.collection("tags").doc(tagId).get();
+    if (!tagDoc.exists) {
+      return res.status(404).json({ error: "Tag no encontrado" });
+    }
 
-  res.status(204).send();
+    const tagData = tagDoc.data()!;
+    if (tagData.userId !== userId) {
+      return res.status(403).json({ error: "No autorizado" });
+    }
+
+    // Eliminar todas las relaciones transactionTags
+    const transactionTagsSnapshot = await db.collection("transactionTags")
+      .where("tagId", "==", tagId)
+      .get();
+
+    const batch = db.batch();
+    transactionTagsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+    batch.delete(db.collection("tags").doc(tagId));
+    await batch.commit();
+
+    res.status(204).send();
+  } catch (error: any) {
+    console.error("Delete tag error:", error);
+    res.status(500).json({ error: error.message || "Error al eliminar tag" });
+  }
 }
 
-// Asociar/desasociar tags de transacciones
 export async function addTagToTransaction(req: AuthRequest, res: Response) {
-  const { transactionId, tagId } = req.body;
-  const userId = req.user!.userId;
+  try {
+    const { transactionId, tagId } = req.body;
+    const userId = req.user!.userId;
 
-  // Verificar que la transacción pertenece al usuario
-  const transaction = await prisma.transaction.findFirst({
-    where: { id: transactionId, userId }
-  });
+    // Verificar que la transacción pertenece al usuario
+    const transactionDoc = await db.collection("transactions").doc(transactionId).get();
+    if (!transactionDoc.exists) {
+      return res.status(404).json({ error: "Transacción no encontrada" });
+    }
 
-  if (!transaction) {
-    return res.status(404).json({ error: "Transacción no encontrada" });
+    const transactionData = transactionDoc.data()!;
+    if (transactionData.userId !== userId) {
+      return res.status(403).json({ error: "No autorizado" });
+    }
+
+    // Verificar que el tag pertenece al usuario
+    const tagDoc = await db.collection("tags").doc(tagId).get();
+    if (!tagDoc.exists) {
+      return res.status(404).json({ error: "Tag no encontrado" });
+    }
+
+    const tagData = tagDoc.data()!;
+    if (tagData.userId !== userId) {
+      return res.status(403).json({ error: "No autorizado" });
+    }
+
+    // Verificar que no existe ya la relación
+    const existingSnapshot = await db.collection("transactionTags")
+      .where("transactionId", "==", transactionId)
+      .where("tagId", "==", tagId)
+      .limit(1)
+      .get();
+
+    if (!existingSnapshot.empty) {
+      const existing = docToObject(existingSnapshot.docs[0]);
+      const tag = docToObject(tagDoc);
+      return res.json({ transactionTag: { ...existing, tag } });
+    }
+
+    // Crear relación
+    const transactionTagData = {
+      transactionId,
+      tagId,
+      createdAt: Timestamp.now()
+    };
+
+    const docRef = await db.collection("transactionTags").add(objectToFirestore(transactionTagData));
+    const transactionTag = docToObject(await docRef.get());
+    const tag = docToObject(tagDoc);
+
+    res.status(201).json({ transactionTag: { ...transactionTag, tag } });
+  } catch (error: any) {
+    console.error("Add tag to transaction error:", error);
+    res.status(500).json({ error: error.message || "Error al agregar tag a transacción" });
   }
-
-  // Verificar que el tag pertenece al usuario
-  const tag = await prisma.tag.findFirst({
-    where: { id: tagId, userId }
-  });
-
-  if (!tag) {
-    return res.status(404).json({ error: "Tag no encontrado" });
-  }
-
-  const transactionTag = await prisma.transactionTag.create({
-    data: { transactionId, tagId },
-    include: { tag: true }
-  });
-
-  res.status(201).json({ transactionTag });
 }
 
 export async function removeTagFromTransaction(req: AuthRequest, res: Response) {
-  const { transactionId, tagId } = req.params;
-  const userId = req.user!.userId;
+  try {
+    const { transactionId, tagId } = req.params;
+    const userId = req.user!.userId;
 
-  // Verificar que la transacción pertenece al usuario
-  const transaction = await prisma.transaction.findFirst({
-    where: { id: transactionId, userId }
-  });
+    // Verificar que la transacción pertenece al usuario
+    const transactionDoc = await db.collection("transactions").doc(transactionId).get();
+    if (!transactionDoc.exists) {
+      return res.status(404).json({ error: "Transacción no encontrada" });
+    }
 
-  if (!transaction) {
-    return res.status(404).json({ error: "Transacción no encontrada" });
+    const transactionData = transactionDoc.data()!;
+    if (transactionData.userId !== userId) {
+      return res.status(403).json({ error: "No autorizado" });
+    }
+
+    // Eliminar relación
+    const transactionTagsSnapshot = await db.collection("transactionTags")
+      .where("transactionId", "==", transactionId)
+      .where("tagId", "==", tagId)
+      .get();
+
+    const batch = db.batch();
+    transactionTagsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+
+    res.status(204).send();
+  } catch (error: any) {
+    console.error("Remove tag from transaction error:", error);
+    res.status(500).json({ error: error.message || "Error al remover tag de transacción" });
   }
-
-  await prisma.transactionTag.deleteMany({
-    where: { transactionId, tagId }
-  });
-
-  res.status(204).send();
 }
-

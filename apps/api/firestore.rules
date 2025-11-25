@@ -1,0 +1,162 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper: usuario autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper: es el dueño del recurso
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Helper: validar que userId coincide con auth.uid
+    function isValidUserId() {
+      return request.resource.data.userId == request.auth.uid;
+    }
+    
+    // Users: solo lectura/escritura de su propio perfil
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+      allow create: if isAuthenticated() && isValidUserId();
+    }
+    
+    // Accounts: solo del usuario con validaciones
+    match /accounts/{accountId} {
+      allow create: if isAuthenticated() && 
+        isValidUserId() &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 100 &&
+        request.resource.data.type in ['CASH', 'BANK', 'CREDIT', 'SAVINGS', 'OTHER'] &&
+        request.resource.data.currencyCode is string;
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow update: if isOwner(resource.data.userId) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 100;
+    }
+    
+    // Categories: solo del usuario con validaciones
+    match /categories/{categoryId} {
+      allow create: if isAuthenticated() && 
+        isValidUserId() &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 100 &&
+        request.resource.data.type in ['INCOME', 'EXPENSE'];
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow update: if isOwner(resource.data.userId) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 100;
+    }
+    
+    // Transactions: solo del usuario con validaciones estrictas
+    match /transactions/{transactionId} {
+      allow create: if isAuthenticated() && 
+        isValidUserId() &&
+        request.resource.data.amountCents is int &&
+        request.resource.data.amountCents > 0 &&
+        request.resource.data.type in ['INCOME', 'EXPENSE', 'TRANSFER'] &&
+        request.resource.data.occurredAt is timestamp &&
+        request.resource.data.currencyCode is string;
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow update: if isOwner(resource.data.userId) &&
+        request.resource.data.amountCents is int &&
+        request.resource.data.amountCents > 0 &&
+        request.resource.data.type in ['INCOME', 'EXPENSE', 'TRANSFER'];
+    }
+    
+    // Monthly Goals: solo del usuario
+    match /monthlyGoals/{goalId} {
+      allow create: if isAuthenticated() && 
+        isValidUserId() &&
+        request.resource.data.month is timestamp &&
+        request.resource.data.savingGoalCents is int &&
+        request.resource.data.savingGoalCents >= 0;
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow update: if isOwner(resource.data.userId) &&
+        request.resource.data.savingGoalCents is int &&
+        request.resource.data.savingGoalCents >= 0;
+    }
+    
+    // Category Budgets: solo del usuario
+    match /categoryBudgets/{budgetId} {
+      allow create: if isAuthenticated() && 
+        isValidUserId() &&
+        request.resource.data.month is timestamp &&
+        request.resource.data.budgetCents is int &&
+        request.resource.data.budgetCents > 0;
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow update: if isOwner(resource.data.userId) &&
+        request.resource.data.budgetCents is int &&
+        request.resource.data.budgetCents > 0;
+    }
+    
+    // Tags: solo del usuario
+    match /tags/{tagId} {
+      allow create: if isAuthenticated() && 
+        isValidUserId() &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 50;
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow update: if isOwner(resource.data.userId) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 50;
+    }
+    
+    // Transaction Tags: validar que transaction pertenezca al usuario
+    match /transactionTags/{tagId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        (resource == null || get(/databases/$(database)/documents/transactions/$(resource.data.transactionId)).data.userId == request.auth.uid) &&
+        (request.resource == null || get(/databases/$(database)/documents/transactions/$(request.resource.data.transactionId)).data.userId == request.auth.uid);
+    }
+    
+    // Transaction Patterns: solo del usuario
+    match /transactionPatterns/{patternId} {
+      allow create: if isAuthenticated() && 
+        isValidUserId() &&
+        request.resource.data.frequency is int &&
+        request.resource.data.frequency > 0;
+      allow read, update, delete: if isOwner(resource.data.userId);
+    }
+    
+    // Debts: solo del usuario con validaciones
+    match /debts/{debtId} {
+      allow create: if isAuthenticated() && 
+        isValidUserId() &&
+        request.resource.data.description is string &&
+        request.resource.data.description.size() > 0 &&
+        request.resource.data.totalAmountCents is int &&
+        request.resource.data.totalAmountCents > 0 &&
+        request.resource.data.monthlyPaymentCents is int &&
+        request.resource.data.monthlyPaymentCents > 0 &&
+        request.resource.data.totalInstallments is int &&
+        request.resource.data.totalInstallments > 0 &&
+        request.resource.data.paidInstallments is int &&
+        request.resource.data.paidInstallments >= 0 &&
+        request.resource.data.paidInstallments <= request.resource.data.totalInstallments &&
+        request.resource.data.startMonth is timestamp;
+      allow read, update, delete: if isOwner(resource.data.userId);
+      allow update: if isOwner(resource.data.userId) &&
+        (!('paidInstallments' in request.resource.data) || 
+         (request.resource.data.paidInstallments is int &&
+          request.resource.data.paidInstallments >= 0 &&
+          request.resource.data.paidInstallments <= resource.data.totalInstallments));
+    }
+    
+    // Notification Subscriptions: solo del usuario
+    match /notificationSubscriptions/{subscriptionId} {
+      allow create: if isAuthenticated() && 
+        isValidUserId() &&
+        request.resource.data.endpoint is string;
+      allow read, update, delete: if isOwner(resource.data.userId);
+    }
+  }
+}
+

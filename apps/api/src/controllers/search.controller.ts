@@ -1,87 +1,116 @@
 import { Response } from "express";
-import { prisma } from "../lib/db.js";
+import { db } from "../lib/firebase.js";
 import { AuthRequest } from "../server/middleware/auth.js";
+import { docToObject, textSearch, getDocumentsByIds, chunkArray } from "../lib/firestore-helpers.js";
+
+// Límites para prevenir queries costosos
+const MAX_SEARCH_RESULTS = 50;
+const MAX_DOCS_TO_SCAN = 200;
 
 export async function globalSearch(req: AuthRequest, res: Response) {
-  const { q, limit = "10" } = req.query;
-  const userId = req.user!.userId;
-  const searchLimit = Math.min(Number(limit) || 10, 50);
-
-  if (!q || typeof q !== "string" || q.trim().length < 2) {
-    return res.json({
-      transactions: [],
-      categories: [],
-      accounts: [],
-      tags: []
-    });
-  }
-
-  const searchTerm = q.trim();
-  const searchPattern = `%${searchTerm}%`;
-
   try {
-    // Buscar transacciones
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        userId,
-        OR: [
-          { description: { contains: searchTerm, mode: "insensitive" } },
-          {
-            category: {
-              name: { contains: searchTerm, mode: "insensitive" }
-            }
-          },
-          {
-            account: {
-              name: { contains: searchTerm, mode: "insensitive" }
-            }
-          }
-        ]
-      },
-      include: {
-        category: true,
-        account: true,
-        tags: {
-          include: {
-            tag: true
-          }
-        }
-      },
-      orderBy: { occurredAt: "desc" },
-      take: searchLimit
+    const { q, limit = "10" } = req.query;
+    const userId = req.user!.userId;
+    const searchLimit = Math.min(Number(limit) || 10, MAX_SEARCH_RESULTS);
+
+    if (!q || typeof q !== "string" || q.trim().length < 2) {
+      return res.json({
+        transactions: [],
+        categories: [],
+        accounts: [],
+        tags: []
+      });
+    }
+
+    const searchTerm = q.trim().toLowerCase();
+
+    // Búsqueda optimizada: solo traer lo necesario
+    // Para transacciones, usar límite estricto para evitar escanear toda la colección
+    const transactionsSnapshot = await db.collection("transactions")
+      .where("userId", "==", userId)
+      .orderBy("occurredAt", "desc")
+      .limit(MAX_DOCS_TO_SCAN)
+      .get();
+
+    let transactions = transactionsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => {
+        const desc = (tx.description || "").toLowerCase();
+        return desc.includes(searchTerm);
+      })
+      .slice(0, searchLimit);
+
+    // Búsquedas en paralelo para categorías, cuentas y tags (son colecciones pequeñas)
+    const [categoriesSnapshot, accountsSnapshot, tagsSnapshot] = await Promise.all([
+      db.collection("categories").where("userId", "==", userId).limit(100).get(),
+      db.collection("accounts").where("userId", "==", userId).limit(50).get(),
+      db.collection("tags").where("userId", "==", userId).limit(100).get()
+    ]);
+
+    const categories = categoriesSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((cat: any) => cat.name.toLowerCase().includes(searchTerm))
+      .slice(0, searchLimit);
+
+    const accounts = accountsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((acc: any) => acc.name.toLowerCase().includes(searchTerm))
+      .slice(0, searchLimit);
+
+    const tags = tagsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tag: any) => tag.name.toLowerCase().includes(searchTerm))
+      .slice(0, searchLimit);
+
+    // Cargar relaciones para transacciones
+    const categoryIds = [...new Set(transactions.map((t: any) => t.categoryId).filter(Boolean))];
+    const accountIds = [...new Set(transactions.map((t: any) => t.accountId))];
+    const transactionIds = transactions.map((t: any) => t.id);
+
+    // Cargar transactionTags con chunking
+    let tagsForTxDocs: any[] = [];
+    if (transactionIds.length > 0) {
+      const transactionIdChunks = chunkArray(transactionIds, 10);
+      const tagSnapshots = await Promise.all(
+        transactionIdChunks.map(chunk =>
+          db.collection("transactionTags").where("transactionId", "in", chunk).get()
+        )
+      );
+      tagsForTxDocs = tagSnapshots.flatMap(snapshot => snapshot.docs);
+    }
+
+    const [categoriesForTx, accountsForTx] = await Promise.all([
+      getDocumentsByIds("categories", categoryIds),
+      getDocumentsByIds("accounts", accountIds)
+    ]);
+
+    const categoriesMap = new Map(categoriesForTx.map((c: any) => [c.id, c]));
+    const accountsMap = new Map(accountsForTx.map((a: any) => [a.id, a]));
+
+    // Cargar tags
+    const tagIds = [...new Set(tagsForTxDocs.map(doc => doc.data().tagId))];
+    const tagsForTx = await getDocumentsByIds("tags", tagIds);
+    const tagsMap = new Map(tagsForTx.map((t: any) => [t.id, t]));
+
+    const transactionTagsMap = new Map<string, any[]>();
+    tagsForTxDocs.forEach(doc => {
+      const data = doc.data();
+      const txId = data.transactionId;
+      if (!transactionTagsMap.has(txId)) {
+        transactionTagsMap.set(txId, []);
+      }
+      const tag = tagsMap.get(data.tagId);
+      if (tag) {
+        transactionTagsMap.get(txId)!.push(tag);
+      }
     });
 
-    // Buscar categorías
-    const categories = await prisma.category.findMany({
-      where: {
-        userId,
-        name: { contains: searchTerm, mode: "insensitive" }
-      },
-      take: searchLimit
-    });
-
-    // Buscar cuentas
-    const accounts = await prisma.account.findMany({
-      where: {
-        userId,
-        name: { contains: searchTerm, mode: "insensitive" }
-      },
-      take: searchLimit
-    });
-
-    // Buscar tags
-    const tags = await prisma.tag.findMany({
-      where: {
-        userId,
-        name: { contains: searchTerm, mode: "insensitive" }
-      },
-      take: searchLimit
-    });
-
-    // Formatear transacciones
-    const formattedTransactions = transactions.map(tx => ({
+    // Enriquecer transacciones
+    const formattedTransactions = transactions.map((tx: any) => ({
       ...tx,
-      tags: tx.tags.map(tt => tt.tag)
+      category: tx.categoryId ? categoriesMap.get(tx.categoryId) || null : null,
+      account: accountsMap.get(tx.accountId) || null,
+      tags: transactionTagsMap.get(tx.id) || []
     }));
 
     res.json({
@@ -98,27 +127,30 @@ export async function globalSearch(req: AuthRequest, res: Response) {
 }
 
 export async function searchSuggestions(req: AuthRequest, res: Response) {
-  const { q } = req.query;
-  const userId = req.user!.userId;
-
-  if (!q || typeof q !== "string" || q.trim().length < 1) {
-    return res.json({ suggestions: [] });
-  }
-
-  const searchTerm = q.trim().toLowerCase();
-
   try {
+    const { q } = req.query;
+    const userId = req.user!.userId;
+
+    if (!q || typeof q !== "string" || q.trim().length < 1) {
+      return res.json({ suggestions: [] });
+    }
+
+    const searchTerm = q.trim().toLowerCase();
+
     const suggestions: any[] = [];
 
     // Sugerencias de categorías
-    const categories = await prisma.category.findMany({
-      where: {
-        userId,
-        name: { contains: searchTerm, mode: "insensitive" }
-      },
-      take: 5
-    });
-    categories.forEach(cat => {
+    const categoriesSnapshot = await db.collection("categories")
+      .where("userId", "==", userId)
+      .limit(20)
+      .get();
+
+    const categories = categoriesSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((cat: any) => cat.name.toLowerCase().includes(searchTerm))
+      .slice(0, 5);
+
+    categories.forEach((cat: any) => {
       suggestions.push({
         type: "category",
         id: cat.id,
@@ -129,14 +161,17 @@ export async function searchSuggestions(req: AuthRequest, res: Response) {
     });
 
     // Sugerencias de cuentas
-    const accounts = await prisma.account.findMany({
-      where: {
-        userId,
-        name: { contains: searchTerm, mode: "insensitive" }
-      },
-      take: 5
-    });
-    accounts.forEach(acc => {
+    const accountsSnapshot = await db.collection("accounts")
+      .where("userId", "==", userId)
+      .limit(20)
+      .get();
+
+    const accounts = accountsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((acc: any) => acc.name.toLowerCase().includes(searchTerm))
+      .slice(0, 5);
+
+    accounts.forEach((acc: any) => {
       suggestions.push({
         type: "account",
         id: acc.id,
@@ -147,14 +182,17 @@ export async function searchSuggestions(req: AuthRequest, res: Response) {
     });
 
     // Sugerencias de tags
-    const tags = await prisma.tag.findMany({
-      where: {
-        userId,
-        name: { contains: searchTerm, mode: "insensitive" }
-      },
-      take: 5
-    });
-    tags.forEach(tag => {
+    const tagsSnapshot = await db.collection("tags")
+      .where("userId", "==", userId)
+      .limit(20)
+      .get();
+
+    const tags = tagsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tag: any) => tag.name.toLowerCase().includes(searchTerm))
+      .slice(0, 5);
+
+    tags.forEach((tag: any) => {
       suggestions.push({
         type: "tag",
         id: tag.id,
@@ -165,27 +203,27 @@ export async function searchSuggestions(req: AuthRequest, res: Response) {
     });
 
     // Sugerencias de descripciones comunes de transacciones
-    const commonDescriptions = await prisma.transaction.findMany({
-      where: {
-        userId,
-        description: { contains: searchTerm, mode: "insensitive" }
-      },
-      select: {
-        description: true
-      },
-      distinct: ["description"],
-      take: 5
-    });
-    commonDescriptions.forEach(tx => {
-      if (tx.description) {
-        suggestions.push({
-          type: "description",
-          id: tx.description,
-          title: tx.description,
-          subtitle: "Descripción común",
-          icon: "📝"
-        });
+    const transactionsSnapshot = await db.collection("transactions")
+      .where("userId", "==", userId)
+      .limit(100)
+      .get();
+
+    const descriptions = new Set<string>();
+    transactionsSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.description && data.description.toLowerCase().includes(searchTerm)) {
+        descriptions.add(data.description);
       }
+    });
+
+    Array.from(descriptions).slice(0, 5).forEach(desc => {
+      suggestions.push({
+        type: "description",
+        id: desc,
+        title: desc,
+        subtitle: "Descripción común",
+        icon: "📝"
+      });
     });
 
     res.json({ suggestions: suggestions.slice(0, 10) });
@@ -194,4 +232,3 @@ export async function searchSuggestions(req: AuthRequest, res: Response) {
     res.status(500).json({ error: "Error en las sugerencias" });
   }
 }
-
