@@ -6,12 +6,12 @@ import { z } from "zod";
 import { ReactNode } from "react";
 
 // Hook personalizado para formularios con Zod
-export function useZodForm<T extends z.ZodSchema>(
+export function useZodForm<T extends z.ZodSchema<any, any>>(
   schema: T,
   defaultValues?: DefaultValues<z.infer<T>>
 ) {
   return useForm<z.infer<T>>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema as any),
     defaultValues,
     mode: "onChange", // Validar mientras escribe
   });
