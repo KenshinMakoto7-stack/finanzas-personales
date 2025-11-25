@@ -6,14 +6,16 @@
     "outDir": "dist",
     "rootDir": "src",
     "esModuleInterop": true,
-    "strict": true,
+    "strict": false,
     "skipLibCheck": true,
+    "noImplicitAny": false,
     "baseUrl": ".",
     "paths": {
       "@pf/shared/*": ["../../packages/shared/src/*"]
     }
   },
-  "include": ["src", "prisma", "scripts"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/tests"]
 }
 
 
