@@ -26,10 +26,18 @@ if (!admin.apps.length) {
     }
   }
 
-  // Opción 1: Usar credenciales desde variable de entorno (JSON string)
+  // Opción 1: Usar credenciales desde variable de entorno (JSON string o Base64)
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     try {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      let jsonString = process.env.FIREBASE_SERVICE_ACCOUNT;
+      
+      // Detectar si es Base64 (no empieza con {)
+      if (!jsonString.trim().startsWith('{')) {
+        // Decodificar Base64
+        jsonString = Buffer.from(jsonString, 'base64').toString('utf-8');
+      }
+      
+      const serviceAccount = JSON.parse(jsonString);
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });
