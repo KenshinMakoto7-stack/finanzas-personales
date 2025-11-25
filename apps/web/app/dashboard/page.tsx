@@ -86,7 +86,7 @@ export default function Dashboard() {
       const usdToUyuRate = exchangeRateRes.data.rate || 40.0;
       
       // Convertir todas las transacciones a la moneda base del usuario (UYU)
-      const baseCurrency = user.currencyCode || "UYU";
+      const baseCurrency = user?.currencyCode || "UYU";
       const convertToBase = (amountCents: number, currencyCode: string) => {
         if (currencyCode === baseCurrency) return amountCents;
         if (currencyCode === "USD" && baseCurrency === "UYU") {
