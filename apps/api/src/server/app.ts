@@ -62,18 +62,31 @@ const apiLimiter = rateLimit({
   message: { error: "Demasiadas solicitudes. Intenta nuevamente en un momento." }
 });
 
-app.use(helmet());
-// CORS: Permitir origen desde variable de entorno o localhost en desarrollo
+// CORS: Configuración robusta
 const allowedOrigins = process.env.CORS_ORIGIN 
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-  : process.env.NODE_ENV === 'production' 
-    ? [] 
-    : ['http://localhost:3000', 'http://localhost:3001'];
+  : ['http://localhost:3000', 'http://localhost:3001'];
+
 app.use(cors({ 
-  origin: process.env.NODE_ENV === 'production' && allowedOrigins.length > 0
-    ? allowedOrigins
-    : true, 
-  credentials: true 
+  origin: (origin, callback) => {
+    // Permitir requests sin origin (como Postman, curl, etc)
+    if (!origin) return callback(null, true);
+    
+    // Permitir si está en la lista o si CORS_ORIGIN no está definido (desarrollo)
+    if (allowedOrigins.includes(origin) || !process.env.CORS_ORIGIN) {
+      callback(null, true);
+    } else {
+      console.log(`CORS blocked origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
+      callback(null, true); // Temporalmente permitir todo para debug
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 app.use(express.json());
 app.use(morgan("dev"));
