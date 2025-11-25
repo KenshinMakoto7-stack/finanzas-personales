@@ -44,10 +44,10 @@ const generalLimiter = rateLimit({
   skip: (req) => req.path === "/health" // No limitar health checks
 });
 
-// Rate Limiting - Auth (5 requests per 15 min - más estricto para prevenir brute force)
+// Rate Limiting - Auth (20 requests per 15 min)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 5,
+  max: 20, // Relajado para testing, ajustar en producción real
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Demasiados intentos de autenticación. Intenta nuevamente en 15 minutos." }
