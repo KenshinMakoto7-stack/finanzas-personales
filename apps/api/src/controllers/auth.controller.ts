@@ -48,11 +48,32 @@ export async function register(req: Request, res: Response) {
 
     await db.collection("users").doc(userRecord.uid).set(objectToFirestore(userData));
 
-    // Generar token personalizado (opcional, o usar el token de Firebase Auth directamente)
-    const customToken = await auth.createCustomToken(userRecord.uid);
+    // Después del registro, hacer login automático para obtener el ID token
+    const API_KEY = process.env.FIREBASE_API_KEY;
+    let token = "";
+    
+    if (API_KEY) {
+      try {
+        const loginResponse = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, returnSecureToken: true })
+          }
+        );
+        const loginData = await loginResponse.json();
+        token = loginData.idToken || "";
+      } catch (e) {
+        // Si falla el login automático, usar customToken como fallback
+        token = await auth.createCustomToken(userRecord.uid);
+      }
+    } else {
+      token = await auth.createCustomToken(userRecord.uid);
+    }
 
     res.status(201).json({
-      token: customToken, // En producción, el cliente debería usar signInWithCustomToken
+      token,
       user: {
         id: userRecord.uid,
         email,
@@ -106,6 +127,7 @@ export async function login(req: Request, res: Response) {
 
         // Si la verificación fue exitosa, obtener datos del usuario
         const userId = verifyData.localId;
+        const idToken = verifyData.idToken; // Usar el ID token de Firebase directamente
         const userRecord = await auth.getUser(userId);
 
         // Obtener datos del usuario de Firestore
@@ -116,11 +138,8 @@ export async function login(req: Request, res: Response) {
 
         const userData = userDoc.data()!;
 
-        // Generar custom token para el cliente
-        const customToken = await auth.createCustomToken(userId);
-
         res.json({
-          token: customToken,
+          token: idToken, // Devolver el ID token directamente (verificable con verifyIdToken)
           user: {
             id: userId,
             email: userRecord.email,
