@@ -14,10 +14,12 @@ export async function listTags(req: AuthRequest, res: Response) {
   try {
     const snapshot = await db.collection("tags")
       .where("userId", "==", req.user!.userId)
-      .orderBy("name", "asc")
       .get();
 
-    const tags = snapshot.docs.map(doc => docToObject(doc));
+    // Ordenar en memoria para evitar índice compuesto
+    const tags = snapshot.docs
+      .map(doc => docToObject(doc))
+      .sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
 
     // Contar transacciones por tag
     const tagsWithCount = await Promise.all(

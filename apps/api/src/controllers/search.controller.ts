@@ -24,11 +24,9 @@ export async function globalSearch(req: AuthRequest, res: Response) {
 
     const searchTerm = q.trim().toLowerCase();
 
-    // Búsqueda optimizada: solo traer lo necesario
-    // Para transacciones, usar límite estricto para evitar escanear toda la colección
+    // Búsqueda optimizada: traer transacciones sin orderBy para evitar índice compuesto
     const transactionsSnapshot = await db.collection("transactions")
       .where("userId", "==", userId)
-      .orderBy("occurredAt", "desc")
       .limit(MAX_DOCS_TO_SCAN)
       .get();
 

@@ -38,10 +38,16 @@ export async function listDebts(req: AuthRequest, res: Response) {
   try {
     const snapshot = await db.collection("debts")
       .where("userId", "==", req.user!.userId)
-      .orderBy("startMonth", "asc")
       .get();
 
-    const debts = snapshot.docs.map(doc => docToObject(doc));
+    // Ordenar en memoria para evitar índice compuesto
+    const debts = snapshot.docs
+      .map(doc => docToObject(doc))
+      .sort((a: any, b: any) => {
+        const dateA = a.startMonth ? new Date(a.startMonth).getTime() : 0;
+        const dateB = b.startMonth ? new Date(b.startMonth).getTime() : 0;
+        return dateA - dateB;
+      });
     res.json({ debts });
   } catch (error: any) {
     console.error("List debts error:", error);

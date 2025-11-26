@@ -111,14 +111,23 @@ export async function savingsStatistics(req: AuthRequest, res: Response) {
     const yearStart = monthAnchorUTC(currentYear, 1);
     const yearEnd = monthAnchorUTC(currentYear, 12);
     
+    // Obtener metas sin orderBy para evitar índice compuesto
     const goalsSnapshot = await db.collection("monthlyGoals")
       .where("userId", "==", req.user!.userId)
-      .where("month", ">=", Timestamp.fromDate(yearStart))
-      .where("month", "<=", Timestamp.fromDate(yearEnd))
-      .orderBy("month", "asc")
       .get();
 
-    const goals = goalsSnapshot.docs.map(doc => docToObject(doc));
+    // Filtrar y ordenar en memoria
+    const goals = goalsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((goal: any) => {
+        const goalDate = goal.month instanceof Date ? goal.month : new Date(goal.month);
+        return goalDate >= yearStart && goalDate <= yearEnd;
+      })
+      .sort((a: any, b: any) => {
+        const dateA = a.month instanceof Date ? a.month : new Date(a.month);
+        const dateB = b.month instanceof Date ? b.month : new Date(b.month);
+        return dateA.getTime() - dateB.getTime();
+      });
 
     // Obtener usuario
     const userDoc = await db.collection("users").doc(req.user!.userId).get();
@@ -384,15 +393,16 @@ export async function fixedCosts(req: AuthRequest, res: Response) {
     const sixMonthsAgo = new Date(today);
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    // Transacciones recurrentes
+    // Transacciones recurrentes - sin orderBy para evitar índice compuesto
     const recurringSnapshot = await db.collection("transactions")
       .where("userId", "==", req.user!.userId)
-      .where("type", "==", "EXPENSE")
       .where("isRecurring", "==", true)
-      .orderBy("amountCents", "desc")
       .get();
 
-    const recurring = recurringSnapshot.docs.map(doc => docToObject(doc));
+    const recurring = recurringSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => tx.type === "EXPENSE")
+      .sort((a: any, b: any) => (b.amountCents || 0) - (a.amountCents || 0));
 
     // Cargar relaciones
     const categoryIds = [...new Set(recurring.map((r: any) => r.categoryId).filter(Boolean))];

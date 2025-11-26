@@ -8,20 +8,26 @@ export async function exportCSV(req: AuthRequest, res: Response) {
   try {
     const { from, to } = req.query as any;
     
-    let query: FirebaseFirestore.Query = db.collection("transactions")
-      .where("userId", "==", req.user!.userId);
+    // Obtener todas las transacciones y filtrar/ordenar en memoria para evitar índices compuestos
+    const snapshot = await db.collection("transactions")
+      .where("userId", "==", req.user!.userId)
+      .get();
 
-    if (from) {
-      query = query.where("occurredAt", ">=", Timestamp.fromDate(new Date(from)));
-    }
-    if (to) {
-      query = query.where("occurredAt", "<=", Timestamp.fromDate(new Date(to)));
-    }
+    const fromDate = from ? new Date(from).getTime() : 0;
+    const toDate = to ? new Date(to).getTime() : Infinity;
 
-    query = query.orderBy("occurredAt", "asc");
-
-    const snapshot = await query.get();
-    const txs = snapshot.docs.map(doc => docToObject(doc));
+    const txs = snapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => {
+        const occurredAt = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
+        const time = occurredAt.getTime();
+        return time >= fromDate && time <= toDate;
+      })
+      .sort((a: any, b: any) => {
+        const dateA = a.occurredAt instanceof Date ? a.occurredAt : new Date(a.occurredAt);
+        const dateB = b.occurredAt instanceof Date ? b.occurredAt : new Date(b.occurredAt);
+        return dateA.getTime() - dateB.getTime();
+      });
 
     // Cargar relaciones
     const accountIds = [...new Set(txs.map((t: any) => t.accountId))];
@@ -63,20 +69,26 @@ export async function exportJSON(req: AuthRequest, res: Response) {
   try {
     const { from, to } = req.query as any;
     
-    let query: FirebaseFirestore.Query = db.collection("transactions")
-      .where("userId", "==", req.user!.userId);
+    // Obtener todas las transacciones y filtrar/ordenar en memoria
+    const snapshot = await db.collection("transactions")
+      .where("userId", "==", req.user!.userId)
+      .get();
 
-    if (from) {
-      query = query.where("occurredAt", ">=", Timestamp.fromDate(new Date(from)));
-    }
-    if (to) {
-      query = query.where("occurredAt", "<=", Timestamp.fromDate(new Date(to)));
-    }
+    const fromDate = from ? new Date(from).getTime() : 0;
+    const toDate = to ? new Date(to).getTime() : Infinity;
 
-    query = query.orderBy("occurredAt", "asc");
-
-    const snapshot = await query.get();
-    const txs = snapshot.docs.map(doc => docToObject(doc));
+    const txs = snapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => {
+        const occurredAt = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
+        const time = occurredAt.getTime();
+        return time >= fromDate && time <= toDate;
+      })
+      .sort((a: any, b: any) => {
+        const dateA = a.occurredAt instanceof Date ? a.occurredAt : new Date(a.occurredAt);
+        const dateB = b.occurredAt instanceof Date ? b.occurredAt : new Date(b.occurredAt);
+        return dateA.getTime() - dateB.getTime();
+      });
 
     res.json({ transactions: txs });
   } catch (error: any) {

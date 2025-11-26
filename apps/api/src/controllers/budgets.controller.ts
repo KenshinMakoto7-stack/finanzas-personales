@@ -27,10 +27,17 @@ export async function listCategoryBudgets(req: AuthRequest, res: Response) {
       query = query.where("month", "==", Timestamp.fromDate(monthDate));
     }
 
-    query = query.orderBy("month", "desc");
-
+    // No usar orderBy para evitar índice compuesto
     const snapshot = await query.get();
-    const budgets = snapshot.docs.map(doc => docToObject(doc));
+    
+    // Ordenar en memoria
+    const budgets = snapshot.docs
+      .map(doc => docToObject(doc))
+      .sort((a: any, b: any) => {
+        const dateA = a.month ? new Date(a.month).getTime() : 0;
+        const dateB = b.month ? new Date(b.month).getTime() : 0;
+        return dateB - dateA; // desc
+      });
 
     // Calcular gastos actuales por categoría
     const budgetsWithSpent = await Promise.all(

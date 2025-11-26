@@ -13,15 +13,23 @@ export async function analyzePatterns(req: AuthRequest, res: Response) {
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - monthsAgo);
 
-    // Obtener transacciones recientes
+    // Obtener transacciones del usuario y filtrar en memoria para evitar índices compuestos
     const transactionsSnapshot = await db.collection("transactions")
       .where("userId", "==", userId)
-      .where("occurredAt", ">=", Timestamp.fromDate(startDate))
-      .where("type", "in", ["EXPENSE", "INCOME"])
-      .orderBy("occurredAt", "desc")
       .get();
 
-    const transactions = transactionsSnapshot.docs.map(doc => docToObject(doc));
+    const startTime = startDate.getTime();
+    const transactions = transactionsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => {
+        const occurredAt = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
+        return occurredAt.getTime() >= startTime && (tx.type === "EXPENSE" || tx.type === "INCOME");
+      })
+      .sort((a: any, b: any) => {
+        const dateA = a.occurredAt instanceof Date ? a.occurredAt : new Date(a.occurredAt);
+        const dateB = b.occurredAt instanceof Date ? b.occurredAt : new Date(b.occurredAt);
+        return dateB.getTime() - dateA.getTime(); // desc
+      });
 
     // Cargar relaciones
     const categoryIds = [...new Set(transactions.map((t: any) => t.categoryId).filter(Boolean))];
@@ -152,20 +160,15 @@ export async function getSuggestions(req: AuthRequest, res: Response) {
     const dayOfWeek = targetDate.getDay();
     const dayOfMonth = targetDate.getDate();
 
-    // Buscar patrones que coincidan con el día
-    // Firestore no soporta OR directamente, así que hacemos dos queries
+    // Buscar patrones que coincidan con el día - sin orderBy para evitar índices compuestos
     const [patternsByWeekSnapshot, patternsByMonthSnapshot] = await Promise.all([
       db.collection("transactionPatterns")
         .where("userId", "==", userId)
         .where("dayOfWeek", "==", dayOfWeek)
-        .orderBy("frequency", "desc")
-        .limit(10)
         .get(),
       db.collection("transactionPatterns")
         .where("userId", "==", userId)
         .where("dayOfMonth", "==", dayOfMonth)
-        .orderBy("frequency", "desc")
-        .limit(10)
         .get()
     ]);
 
@@ -219,13 +222,20 @@ export async function getSuggestions(req: AuthRequest, res: Response) {
 
 export async function listPatterns(req: AuthRequest, res: Response) {
   try {
+    // Sin orderBy para evitar índices compuestos
     const snapshot = await db.collection("transactionPatterns")
       .where("userId", "==", req.user!.userId)
-      .orderBy("frequency", "desc")
-      .orderBy("lastMatched", "desc")
       .get();
 
-    const patterns = snapshot.docs.map(doc => docToObject(doc));
+    // Ordenar en memoria
+    const patterns = snapshot.docs
+      .map(doc => docToObject(doc))
+      .sort((a: any, b: any) => {
+        if (b.frequency !== a.frequency) return b.frequency - a.frequency;
+        const dateA = a.lastMatched instanceof Date ? a.lastMatched : new Date(a.lastMatched || 0);
+        const dateB = b.lastMatched instanceof Date ? b.lastMatched : new Date(b.lastMatched || 0);
+        return dateB.getTime() - dateA.getTime();
+      });
 
     // Cargar relaciones
     const categoryIds = [...new Set(patterns.map((p: any) => p.categoryId).filter(Boolean))];
