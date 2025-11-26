@@ -24,7 +24,7 @@ function useIsMobile() {
 }
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, token, initialized, initAuth } = useAuth();
   const router = useRouter();
   const isMobile = useIsMobile();
   const [data, setData] = useState<any>();
@@ -39,16 +39,20 @@ export default function Dashboard() {
   const [pendingRecurring, setPendingRecurring] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!user) {
+    // Esperar a que Zustand rehidrate
+    if (!initialized) {
+      initAuth();
+      return;
+    }
+
+    if (!user || !token) {
       router.push("/login");
       return;
     }
 
-    const token = localStorage.getItem("token");
-    if (token) setAuthToken(token);
-
+    setAuthToken(token);
     loadData();
-  }, [user, selectedDate, router]);
+  }, [user, token, initialized, selectedDate, router, initAuth]);
 
   async function loadData() {
     setLoading(true);
@@ -81,9 +85,14 @@ export default function Dashboard() {
 
       const transactions = transactionsRes.data.transactions || [];
       
-      // Obtener tipo de cambio USD/UYU
-      const exchangeRateRes = await api.get("/exchange/rate").catch(() => ({ data: { rate: 40.0 } }));
-      const usdToUyuRate = exchangeRateRes.data.rate || 40.0;
+      // Obtener tipo de cambio USD/UYU con fallback más realista
+      // Nota: El rate por defecto debe actualizarse periódicamente o usar un servicio de respaldo
+      const DEFAULT_USD_UYU_RATE = 42.0; // Actualizado Nov 2025
+      const exchangeRateRes = await api.get("/exchange/rate").catch((err) => {
+        console.warn("Error obteniendo tipo de cambio, usando fallback:", err?.message);
+        return { data: { rate: DEFAULT_USD_UYU_RATE } };
+      });
+      const usdToUyuRate = exchangeRateRes.data.rate || DEFAULT_USD_UYU_RATE;
       
       // Convertir todas las transacciones a la moneda base del usuario (UYU)
       const baseCurrency = user?.currencyCode || "UYU";

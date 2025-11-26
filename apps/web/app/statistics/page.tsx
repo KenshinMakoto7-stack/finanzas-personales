@@ -10,7 +10,7 @@ function fmtMoney(cents: number, currency = "USD") {
 }
 
 export default function StatisticsPage() {
-  const { user } = useAuth();
+  const { user, token, initialized, initAuth } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"expenses" | "savings" | "income" | "fixed" | "ai">("expenses");
   const [expensesData, setExpensesData] = useState<any>(null);
@@ -24,16 +24,19 @@ export default function StatisticsPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!user) {
+    if (!initialized) {
+      initAuth();
+      return;
+    }
+
+    if (!user || !token) {
       router.push("/login");
       return;
     }
 
-    const token = localStorage.getItem("token");
-    if (token) setAuthToken(token);
-
+    setAuthToken(token);
     loadData();
-  }, [user, router, period, year, month, activeTab]);
+  }, [user, token, initialized, router, period, year, month, activeTab, initAuth]);
 
   async function loadData() {
     setLoading(true);

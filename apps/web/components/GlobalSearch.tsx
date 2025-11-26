@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import api, { setAuthToken } from "../lib/api";
+import { useAuth } from "../store/auth";
 
 interface Suggestion {
   type: string;
@@ -12,6 +13,7 @@ interface Suggestion {
 }
 
 export default function GlobalSearch() {
+  const { token } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -22,9 +24,8 @@ export default function GlobalSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
     if (token) setAuthToken(token);
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {

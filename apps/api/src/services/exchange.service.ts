@@ -5,6 +5,7 @@
 
 import { db } from "../lib/firebase.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { logger } from "../lib/monitoring.js";
 
 interface ExchangeRateCache {
   rate: number;
@@ -52,7 +53,7 @@ export async function getUSDToUYUExchangeRate(): Promise<number> {
       }
     }
   } catch (e) {
-    console.warn('Error leyendo cache de Firestore:', e);
+    logger.warn('Error leyendo cache de Firestore', e as Error);
   }
 
   // 3. Obtener de API pública
@@ -74,24 +75,24 @@ export async function getUSDToUYUExchangeRate(): Promise<number> {
           USD_UYU: rate,
           timestamp: Timestamp.now(),
           source: 'exchangerate-api'
-        }).catch(e => console.warn('Error guardando cache:', e));
+        }).catch(e => logger.warn('Error guardando cache', e as Error));
         
         return rate;
       }
     }
   } catch (error) {
-    console.warn('Error obteniendo tipo de cambio de API:', error);
+    logger.warn('Error obteniendo tipo de cambio de API', error as Error);
   }
 
-  // 4. Fallback: usar cache viejo o valor por defecto
-  const defaultRate = parseFloat(process.env.DEFAULT_USD_UYU_RATE || '40.0');
+  // 4. Fallback: usar cache viejo o valor por defecto (actualizado Nov 2025)
+  const defaultRate = parseFloat(process.env.DEFAULT_USD_UYU_RATE || '42.0');
   
   if (memoryCache) {
-    console.warn(`Usando tipo de cambio cacheado: ${memoryCache.rate}`);
+    logger.info(`Usando tipo de cambio cacheado: ${memoryCache.rate}`);
     return memoryCache.rate;
   }
 
-  console.warn(`Usando tipo de cambio por defecto: ${defaultRate}`);
+  logger.warn(`Usando tipo de cambio por defecto: ${defaultRate}`);
   memoryCache = { rate: defaultRate, date: today, source: 'default', timestamp: now };
   return defaultRate;
 }
@@ -122,7 +123,7 @@ export async function convertCurrency(
   }
 
   // Monedas no soportadas, retornar sin convertir
-  console.warn(`Conversión no soportada: ${fromCurrency} -> ${toCurrency}`);
+  logger.warn(`Conversión no soportada: ${fromCurrency} -> ${toCurrency}`);
   return amountCents;
 }
 
@@ -201,7 +202,7 @@ export function convertAmountWithRate(
   const rate = rateMap.get(key);
   
   if (rate === undefined) {
-    console.warn(`Rate not found for ${key}, returning original amount`);
+    logger.warn(`Rate not found for ${key}, returning original amount`);
     return amountCents;
   }
   
@@ -227,7 +228,7 @@ export async function safeConvertCurrency(
   try {
     // Validar entrada
     if (!isFinite(amount) || amount < 0) {
-      console.error(`Invalid amount for conversion: ${amount} ${from} -> ${to}`);
+      logger.error(`Invalid amount for conversion: ${amount} ${from} -> ${to}`);
       return amount; // Fallback seguro
     }
 
@@ -241,7 +242,7 @@ export async function safeConvertCurrency(
     
     // Validar resultado
     if (!isFinite(converted) || converted < 0 || isNaN(converted)) {
-      console.error(
+      logger.error(
         `Invalid conversion result: ${amount} ${from} -> ${to}, result: ${converted}`
       );
       return amount; // Fallback seguro: retornar cantidad original
@@ -250,7 +251,7 @@ export async function safeConvertCurrency(
     // Verificar que la conversión es razonable (no más de 1000x o menos de 0.001x)
     const ratio = converted / amount;
     if (ratio > 1000 || ratio < 0.001) {
-      console.warn(
+      logger.warn(
         `Suspicious conversion ratio: ${ratio} for ${amount} ${from} -> ${to}, result: ${converted}`
       );
       // Aún así retornar el resultado, pero loguear la advertencia
@@ -258,11 +259,7 @@ export async function safeConvertCurrency(
     
     return converted;
   } catch (error) {
-    console.error(
-      'Currency conversion failed:',
-      error instanceof Error ? error.message : String(error),
-      { amount, from, to }
-    );
+    logger.error('Currency conversion failed', error as Error, { amount, from, to });
     // Fallback seguro: retornar cantidad original
     return amount;
   }

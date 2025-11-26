@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function NewTransactionPage() {
-  const { user } = useAuth();
+  const { user, token, initialized, initAuth } = useAuth();
   const router = useRouter();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -28,15 +28,40 @@ export default function NewTransactionPage() {
   const [recurringOccurrences, setRecurringOccurrences] = useState<number | "indefinite">("indefinite");
   const [isPaid, setIsPaid] = useState(false);
   const [notifications, setNotifications] = useState<Array<{ date: string; time: string }>>([]);
+  const [authReady, setAuthReady] = useState(false);
+
+  const loadData = async () => {
+    try {
+      const [accRes, catRes] = await Promise.all([
+        api.get("/accounts"),
+        api.get(`/categories?type=${type}`)
+      ]);
+      setAccounts(accRes.data.accounts || []);
+      setCategories(catRes.data.categories || catRes.data.flat || []);
+      if (accRes.data.accounts && accRes.data.accounts.length > 0 && !accountId) {
+        setAccountId(accRes.data.accounts[0].id);
+        if (typeof window !== "undefined" && !new URLSearchParams(window.location.search).get("currency")) {
+          setCurrencyCode(accRes.data.accounts[0].currencyCode || user?.currencyCode || "USD");
+        }
+      }
+    } catch (err: any) {
+      setError("Error al cargar datos");
+    }
+  };
 
   useEffect(() => {
-    if (!user) {
+    if (!initialized) {
+      initAuth();
+      return;
+    }
+
+    if (!user || !token) {
       router.push("/login");
       return;
     }
 
-    const token = localStorage.getItem("token");
-    if (token) setAuthToken(token);
+    setAuthToken(token);
+    setAuthReady(true);
     setCurrencyCode(user.currencyCode || "USD");
 
     // Leer parámetros de URL para prellenar campos (después de cargar datos)
@@ -57,28 +82,13 @@ export default function NewTransactionPage() {
       }
     };
 
-    (async () => {
-      try {
-        const [accRes, catRes] = await Promise.all([
-          api.get("/accounts"),
-          api.get(`/categories?type=${type}`)
-        ]);
-        setAccounts(accRes.data.accounts);
-        setCategories(catRes.data.categories || catRes.data.flat || []);
-        if (accRes.data.accounts.length > 0) {
-          setAccountId(accRes.data.accounts[0].id);
-          // Solo actualizar currency si no viene de URL
-          if (typeof window !== "undefined" && !new URLSearchParams(window.location.search).get("currency")) {
-            setCurrencyCode(accRes.data.accounts[0].currencyCode || user.currencyCode || "USD");
-          }
-        }
-        // Cargar parámetros de URL después de que los datos estén listos
-        loadUrlParams();
-      } catch (err: any) {
-        setError("Error al cargar datos");
-      }
-    })();
-  }, [type, user, router]);
+    loadData().then(loadUrlParams);
+
+    // Recargar datos cuando la ventana gana foco (usuario vuelve de crear cuenta/categoría)
+    const handleFocus = () => loadData();
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [type, user, token, initialized, router, initAuth]);
 
   async function createCategoryQuick() {
     if (!newCategoryName.trim()) {

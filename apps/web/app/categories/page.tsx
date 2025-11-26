@@ -21,17 +21,23 @@ export default function CategoriesPage() {
     color: "#667eea"
   });
 
+  const { token, initialized, initAuth } = useAuth();
+
   useEffect(() => {
-    if (!user) {
+    // Esperar a que Zustand rehidrate
+    if (!initialized) {
+      initAuth();
+      return;
+    }
+
+    if (!user || !token) {
       router.push("/login");
       return;
     }
 
-    const token = localStorage.getItem("token");
-    if (token) setAuthToken(token);
-
+    setAuthToken(token);
     loadCategories();
-  }, [user, router]);
+  }, [user, token, initialized, router, initAuth]);
 
   async function loadCategories() {
     try {

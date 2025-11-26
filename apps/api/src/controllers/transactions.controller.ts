@@ -5,6 +5,10 @@ import { AuthRequest } from "../server/middleware/auth.js";
 import { objectToFirestore, docToObject, textSearch, getDocumentsByIds, chunkArray } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
 
+// Constantes de seguridad
+const MAX_PAGE_SIZE = 100;
+const DEFAULT_PAGE_SIZE = 50;
+
 export async function listTransactions(req: AuthRequest, res: Response) {
   try {
     const {
@@ -63,9 +67,10 @@ export async function listTransactions(req: AuthRequest, res: Response) {
     const orderDirection = sortOrder === "asc" ? "asc" : "desc";
     query = query.orderBy(sortBy || "occurredAt", orderDirection);
 
-    // Paginación
-    const skip = (Number(page) - 1) * Number(pageSize);
-    const take = Number(pageSize);
+    // Paginación con límite de seguridad
+    const requestedPageSize = Math.min(Number(pageSize) || DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+    const skip = (Math.max(1, Number(page)) - 1) * requestedPageSize;
+    const take = requestedPageSize;
 
     // Ejecutar query
     const snapshot = await query.offset(skip).limit(take).get();

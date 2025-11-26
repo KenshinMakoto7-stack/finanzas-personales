@@ -5,6 +5,8 @@ import { AuthRequest } from "../server/middleware/auth.js";
 import { sendPasswordResetEmail } from "../services/email.service.js";
 import { objectToFirestore, fromFirestoreTimestamp } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { logger } from "../lib/monitoring.js";
+import { isValidTimezone, COMMON_TIMEZONES } from "../lib/time.js";
 
 /**
  * Registro de nuevo usuario
@@ -18,6 +20,12 @@ export async function register(req: Request, res: Response) {
     }
 
     const { email, password, name, currencyCode, locale, timeZone } = parsed.data;
+
+    // Validar timezone si se proporciona
+    const validatedTimeZone = timeZone && isValidTimezone(timeZone) ? timeZone : "UTC";
+    if (timeZone && !isValidTimezone(timeZone)) {
+      logger.warn(`Invalid timezone provided: ${timeZone}, defaulting to UTC`);
+    }
 
     // Verificar si el usuario ya existe
     try {
@@ -42,7 +50,7 @@ export async function register(req: Request, res: Response) {
       name: name || null,
       currencyCode: currencyCode || "USD",
       locale: locale || "en-US",
-      timeZone: timeZone || "UTC",
+      timeZone: validatedTimeZone,
       createdAt: Timestamp.now()
     };
 
@@ -84,7 +92,7 @@ export async function register(req: Request, res: Response) {
       }
     });
   } catch (error: any) {
-    console.error("Register error:", error);
+    logger.error("Register error", error);
     res.status(500).json({ error: error.message || "Error al registrar usuario" });
   }
 }
@@ -151,12 +159,12 @@ export async function login(req: Request, res: Response) {
         });
         return;
       } catch (error: any) {
-        console.error("Login verification error:", error);
+        logger.error("Login verification error", error);
         return res.status(401).json({ error: "Credenciales inválidas" });
       }
     } else {
       // FALLBACK: Si no hay API_KEY, usar método anterior (NO SEGURO, pero no rompe)
-      console.warn('⚠️  FIREBASE_API_KEY not set. Login will NOT verify password. Set FIREBASE_API_KEY in environment variables.');
+      logger.warn('FIREBASE_API_KEY not set. Login will NOT verify password.');
       
       // Verificar que el usuario existe (sin verificar contraseña)
       let userRecord;
@@ -193,7 +201,7 @@ export async function login(req: Request, res: Response) {
       });
     }
   } catch (error: any) {
-    console.error("Login error:", error);
+    logger.error("Login error", error);
     res.status(500).json({ error: error.message || "Error al iniciar sesión" });
   }
 }
@@ -222,7 +230,7 @@ export async function me(req: AuthRequest, res: Response) {
       }
     });
   } catch (error: any) {
-    console.error("Me error:", error);
+    logger.error("Me error", error);
     res.status(500).json({ error: error.message || "Error al obtener perfil" });
   }
 }
@@ -262,7 +270,7 @@ export async function updatePrefs(req: AuthRequest, res: Response) {
       }
     });
   } catch (error: any) {
-    console.error("Update prefs error:", error);
+    logger.error("Update prefs error", error);
     res.status(500).json({ error: error.message || "Error al actualizar preferencias" });
   }
 }
@@ -288,7 +296,7 @@ export async function requestPasswordReset(req: Request, res: Response) {
     res.json({ message: "Si el email existe, recibirás un enlace para recuperar tu contraseña" });
   } catch (error: any) {
     // Si el usuario no existe, Firebase lanzará error, pero por seguridad no lo revelamos
-    console.error("Password reset request error:", error);
+    logger.error("Password reset request error", error);
     res.json({ message: "Si el email existe, recibirás un enlace para recuperar tu contraseña" });
   }
 }
@@ -329,7 +337,7 @@ export async function resetPassword(req: Request, res: Response) {
     
     res.json({ message: "Contraseña actualizada exitosamente" });
   } catch (error: any) {
-    console.error("Reset password error:", error);
+    logger.error("Reset password error", error);
     res.status(400).json({ error: "Error al actualizar contraseña" });
   }
 }

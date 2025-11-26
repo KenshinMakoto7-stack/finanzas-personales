@@ -15,7 +15,7 @@ function fmtMoney(cents: number, currency = "USD") {
 }
 
 export default function TransactionsPage() {
-  const { user } = useAuth();
+  const { user, token, initialized, initAuth } = useAuth();
   const router = useRouter();
   const [transactions, setTransactions] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -42,19 +42,23 @@ export default function TransactionsPage() {
   });
 
   useEffect(() => {
-    if (!user) {
+    if (!initialized) {
+      initAuth();
+      return;
+    }
+
+    if (!user || !token) {
       router.push("/login");
       return;
     }
 
-    const token = localStorage.getItem("token");
-    if (token) setAuthToken(token);
+    setAuthToken(token);
 
     loadCategories();
     loadAccounts();
     loadTags();
     loadTransactions();
-  }, [user, page, filters]);
+  }, [user, token, initialized, page, filters, initAuth]);
 
   async function loadCategories() {
     try {

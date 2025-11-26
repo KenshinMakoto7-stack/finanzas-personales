@@ -4,15 +4,14 @@ import api, { setAuthToken } from "../lib/api";
 import { useAuth } from "../store/auth";
 
 export default function NotificationManager() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !token) return;
 
-    const token = localStorage.getItem("token");
-    if (token) setAuthToken(token);
+    setAuthToken(token);
 
     // Verificar permisos de notificación
     if ("Notification" in window) {
@@ -143,7 +142,19 @@ export default function NotificationManager() {
     return btoa(binary);
   }
 
-  if (permission === "default") {
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    const wasDismissed = localStorage.getItem("notif-popup-dismissed");
+    if (wasDismissed) setDismissed(true);
+  }, []);
+
+  function handleDismiss() {
+    setDismissed(true);
+    localStorage.setItem("notif-popup-dismissed", "true");
+  }
+
+  if (permission === "default" && !dismissed) {
     return (
       <div style={{
         position: "fixed",
@@ -156,6 +167,21 @@ export default function NotificationManager() {
         zIndex: 1000,
         maxWidth: "300px"
       }}>
+        <button
+          onClick={handleDismiss}
+          style={{
+            position: "absolute",
+            top: "8px",
+            right: "8px",
+            background: "none",
+            border: "none",
+            fontSize: "18px",
+            cursor: "pointer",
+            color: "#999"
+          }}
+        >
+          ✕
+        </button>
         <div style={{ marginBottom: "12px", fontWeight: "600" }}>
           ¿Activar notificaciones?
         </div>

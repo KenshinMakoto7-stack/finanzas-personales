@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function AccountsPage() {
-  const { user } = useAuth();
+  const { user, token, initialized, initAuth } = useAuth();
   const router = useRouter();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,17 +18,21 @@ export default function AccountsPage() {
   });
 
   useEffect(() => {
-    if (!user) {
+    if (!initialized) {
+      initAuth();
+      return;
+    }
+
+    if (!user || !token) {
       router.push("/login");
       return;
     }
 
-    const token = localStorage.getItem("token");
-    if (token) setAuthToken(token);
+    setAuthToken(token);
     setFormData({ ...formData, currencyCode: user.currencyCode || "USD" });
 
     loadAccounts();
-  }, [user, router]);
+  }, [user, token, initialized, router, initAuth]);
 
   async function loadAccounts() {
     try {

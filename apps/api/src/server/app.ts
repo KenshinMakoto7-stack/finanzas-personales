@@ -69,15 +69,23 @@ const allowedOrigins = process.env.CORS_ORIGIN
 
 app.use(cors({ 
   origin: (origin, callback) => {
-    // Permitir requests sin origin (como Postman, curl, etc)
+    // Permitir requests sin origin (como Postman, curl, mobile apps)
     if (!origin) return callback(null, true);
     
-    // Permitir si está en la lista o si CORS_ORIGIN no está definido (desarrollo)
-    if (allowedOrigins.includes(origin) || !process.env.CORS_ORIGIN) {
+    // En desarrollo (sin CORS_ORIGIN), permitir localhost
+    if (!process.env.CORS_ORIGIN) {
+      const devOrigins = ['http://localhost:3000', 'http://localhost:3001'];
+      if (devOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+    }
+    
+    // En producción, verificar contra lista permitida
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      console.log(`CORS blocked origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
-      callback(null, true); // Temporalmente permitir todo para debug
+      logger.warn(`CORS blocked origin: ${origin}. Allowed: ${allowedOrigins.join(', ')}`);
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
     }
   },
   credentials: true,

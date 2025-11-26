@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function TagsPage() {
-  const { user } = useAuth();
+  const { user, token, initialized, initAuth } = useAuth();
   const router = useRouter();
   const [tags, setTags] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,16 +18,19 @@ export default function TagsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) {
+    if (!initialized) {
+      initAuth();
+      return;
+    }
+
+    if (!user || !token) {
       router.push("/login");
       return;
     }
 
-    const token = localStorage.getItem("token");
-    if (token) setAuthToken(token);
-
+    setAuthToken(token);
     loadTags();
-  }, [user]);
+  }, [user, token, initialized, initAuth]);
 
   async function loadTags() {
     setLoading(true);

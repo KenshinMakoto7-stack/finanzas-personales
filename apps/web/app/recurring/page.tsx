@@ -10,23 +10,26 @@ function fmtMoney(cents: number, currency = "USD") {
 }
 
 export default function RecurringPage() {
-  const { user } = useAuth();
+  const { user, token, initialized, initAuth } = useAuth();
   const router = useRouter();
   const [recurringTransactions, setRecurringTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
 
   useEffect(() => {
-    if (!user) {
+    if (!initialized) {
+      initAuth();
+      return;
+    }
+
+    if (!user || !token) {
       router.push("/login");
       return;
     }
 
-    const token = localStorage.getItem("token");
-    if (token) setAuthToken(token);
-
+    setAuthToken(token);
     loadRecurring();
-  }, [user, router]);
+  }, [user, token, initialized, router, initAuth]);
 
   async function loadRecurring() {
     setLoading(true);

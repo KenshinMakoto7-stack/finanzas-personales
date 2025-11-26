@@ -1,31 +1,51 @@
 import nodemailer from "nodemailer";
+import { logger } from "../lib/monitoring.js";
 
 // Configuración del transporter de email
-// En producción, usa variables de entorno para credenciales
+// Soporta múltiples proveedores: Gmail, SendGrid, Mailgun, Resend, etc.
 const createTransporter = () => {
-  // Configuración para Gmail (puedes cambiar a otro proveedor)
-  // Para usar Gmail, necesitas una "App Password" en lugar de tu contraseña normal
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: false, // true para 465, false para otros puertos
-    auth: {
-      user: process.env.SMTP_USER || "",
-      pass: process.env.SMTP_PASS || "",
-    },
-  });
+  const host = process.env.SMTP_HOST || "smtp.gmail.com";
+  const port = Number(process.env.SMTP_PORT) || 587;
+  const user = process.env.SMTP_USER || "";
+  const pass = process.env.SMTP_PASS || "";
+  
+  // Configuración especial para proveedores comunes
+  if (host.includes("sendgrid")) {
+    return nodemailer.createTransport({
+      host: "smtp.sendgrid.net",
+      port: 587,
+      secure: false,
+      auth: { user: "apikey", pass: process.env.SENDGRID_API_KEY || pass },
+    });
+  }
+  
+  if (host.includes("resend")) {
+    return nodemailer.createTransport({
+      host: "smtp.resend.com",
+      port: 465,
+      secure: true,
+      auth: { user: "resend", pass: process.env.RESEND_API_KEY || pass },
+    });
+  }
 
-  return transporter;
+  // Configuración genérica (Gmail, etc.)
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  });
 };
 
 export async function sendPasswordResetEmail(email: string, resetUrl: string) {
-  // Si no hay configuración de email, mostrar en consola (desarrollo)
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.log(`\n=== RECUPERACIÓN DE CONTRASEÑA ===`);
-    console.log(`Email: ${email}`);
-    console.log(`URL: ${resetUrl}`);
-    console.log(`===================================\n`);
-    console.log("⚠️  Para enviar emails reales, configura SMTP_USER y SMTP_PASS en .env");
+  // Verificar configuración de email
+  const hasSmtpConfig = process.env.SMTP_USER && process.env.SMTP_PASS;
+  const hasSendgridConfig = process.env.SENDGRID_API_KEY;
+  const hasResendConfig = process.env.RESEND_API_KEY;
+  
+  if (!hasSmtpConfig && !hasSendgridConfig && !hasResendConfig) {
+    logger.warn("Email service not configured. Set SMTP_USER/SMTP_PASS, SENDGRID_API_KEY, or RESEND_API_KEY");
+    logger.info(`Password reset requested for ${email}. Reset URL: ${resetUrl}`);
     return;
   }
 
@@ -89,14 +109,12 @@ export async function sendPasswordResetEmail(email: string, resetUrl: string) {
     };
 
     await transporter.sendMail(mailOptions);
-    console.log(`✅ Email de recuperación enviado a ${email}`);
+    logger.info(`Password reset email sent to ${email}`);
   } catch (error) {
-    console.error("❌ Error enviando email:", error);
-    // En desarrollo, mostrar el enlace en consola como fallback
-    console.log(`\n=== FALLBACK: RECUPERACIÓN DE CONTRASEÑA ===`);
-    console.log(`Email: ${email}`);
-    console.log(`URL: ${resetUrl}`);
-    console.log(`==============================================\n`);
+    logger.error("Error sending password reset email", error as Error, { email });
+    // Fallback: log the reset URL for manual recovery
+    logger.info(`Password reset URL for ${email}: ${resetUrl}`);
+    throw error; // Re-throw para que el controller pueda manejarlo
   }
 }
 

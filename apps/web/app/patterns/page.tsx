@@ -15,7 +15,7 @@ function fmtMoney(cents: number, currency = "USD") {
 }
 
 export default function PatternsPage() {
-  const { user } = useAuth();
+  const { user, token, initialized, initAuth } = useAuth();
   const router = useRouter();
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [patterns, setPatterns] = useState<any[]>([]);
@@ -24,17 +24,20 @@ export default function PatternsPage() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
-    if (!user) {
+    if (!initialized) {
+      initAuth();
+      return;
+    }
+
+    if (!user || !token) {
       router.push("/login");
       return;
     }
 
-    const token = localStorage.getItem("token");
-    if (token) setAuthToken(token);
-
+    setAuthToken(token);
     loadSuggestions();
     loadPatterns();
-  }, [user, selectedDate]);
+  }, [user, token, initialized, selectedDate, initAuth]);
 
   async function loadSuggestions() {
     try {

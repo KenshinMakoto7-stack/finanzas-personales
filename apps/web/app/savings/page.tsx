@@ -16,7 +16,7 @@ function fmtMoney(cents: number, currency = "USD") {
 }
 
 export default function SavingsPage() {
-  const { user, logout } = useAuth();
+  const { user, logout, token, initialized, initAuth } = useAuth();
   const router = useRouter();
   const [savingsData, setSavingsData] = useState<any>(null);
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -26,16 +26,19 @@ export default function SavingsPage() {
   const [error, setError] = useState<string>();
 
   useEffect(() => {
-    if (!user) {
+    if (!initialized) {
+      initAuth();
+      return;
+    }
+
+    if (!user || !token) {
       router.push("/login");
       return;
     }
 
-    const token = localStorage.getItem("token");
-    if (token) setAuthToken(token);
-
+    setAuthToken(token);
     loadData();
-  }, [user, selectedYear, router]);
+  }, [user, token, initialized, selectedYear, router, initAuth]);
 
   async function loadData() {
     setLoading(true);
