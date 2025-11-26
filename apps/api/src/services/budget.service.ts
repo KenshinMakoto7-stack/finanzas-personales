@@ -49,66 +49,88 @@ export function computeDailyBudgetWithRollover(params: {
 
 /** Servicio: calcula el resumen para el usuario en una fecha (respetando su TZ) */
 export async function getBudgetSummaryForDate(userId: string, dateISO: string, userTimeZone: string, year?: number, month?: number) {
-  // Rango del mes y del día en UTC (a partir de dateISO interpretado en TZ)
-  const monthRange = monthRangeUTC(dateISO, userTimeZone);
-  const dayRange = dayRangeUTC(dateISO, userTimeZone);
+  try {
+    // Rango del mes y del día en UTC (a partir de dateISO interpretado en TZ)
+    const monthRange = monthRangeUTC(dateISO, userTimeZone);
+    const dayRange = dayRangeUTC(dateISO, userTimeZone);
 
-  // Meta del mes (si no existe, 0)
-  const monthDate = new Date(Date.UTC(monthRange.year, monthRange.month - 1, 1));
-  const goalsSnapshot = await db.collection("monthlyGoals")
-    .where("userId", "==", userId)
-    .where("month", "==", Timestamp.fromDate(monthDate))
-    .limit(1)
-    .get();
+    // Meta del mes (si no existe, 0)
+    let savingGoalCents = 0;
+    try {
+      const monthDate = new Date(Date.UTC(monthRange.year, monthRange.month - 1, 1));
+      const goalsSnapshot = await db.collection("monthlyGoals")
+        .where("userId", "==", userId)
+        .where("month", "==", Timestamp.fromDate(monthDate))
+        .limit(1)
+        .get();
+      savingGoalCents = goalsSnapshot.empty ? 0 : (goalsSnapshot.docs[0].data().savingGoalCents as number || 0);
+    } catch (e) {
+      // Si falla la query de goals, usar 0
+      savingGoalCents = 0;
+    }
 
-  const savingGoalCents = goalsSnapshot.empty ? 0 : (goalsSnapshot.docs[0].data().savingGoalCents as number || 0);
+    // Obtener todas las transacciones del usuario en el mes y filtrar en memoria
+    // Esto evita la necesidad de índices compuestos
+    const allTransactionsSnapshot = await db.collection("transactions")
+      .where("userId", "==", userId)
+      .get();
 
-  // Ingresos del mes
-  const incomeSnapshot = await db.collection("transactions")
-    .where("userId", "==", userId)
-    .where("type", "==", "INCOME")
-    .where("occurredAt", ">=", Timestamp.fromDate(monthRange.start))
-    .where("occurredAt", "<=", Timestamp.fromDate(monthRange.end))
-    .get();
+    const monthStart = monthRange.start.getTime();
+    const monthEnd = monthRange.end.getTime();
+    const dayStart = dayRange.start.getTime();
+    const dayEnd = dayRange.end.getTime();
 
-  const totalIncomeCents = incomeSnapshot.docs.reduce((sum, doc) => {
-    return sum + (doc.data().amountCents || 0);
-  }, 0);
+    let totalIncomeCents = 0;
+    let spentBeforeTodayCents = 0;
+    let spentTodayCents = 0;
 
-  // Gastos hasta ayer
-  const spentBeforeSnapshot = await db.collection("transactions")
-    .where("userId", "==", userId)
-    .where("type", "==", "EXPENSE")
-    .where("occurredAt", ">=", Timestamp.fromDate(monthRange.start))
-    .where("occurredAt", "<", Timestamp.fromDate(dayRange.start))
-    .get();
+    allTransactionsSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      const occurredAt = data.occurredAt?.toDate?.() || new Date(data.occurredAt);
+      const time = occurredAt.getTime();
+      const amountCents = data.amountCents || 0;
 
-  const spentBeforeTodayCents = spentBeforeSnapshot.docs.reduce((sum, doc) => {
-    return sum + (doc.data().amountCents || 0);
-  }, 0);
+      // Solo considerar transacciones del mes actual
+      if (time >= monthStart && time <= monthEnd) {
+        if (data.type === "INCOME") {
+          totalIncomeCents += amountCents;
+        } else if (data.type === "EXPENSE") {
+          if (time < dayStart) {
+            spentBeforeTodayCents += amountCents;
+          } else if (time >= dayStart && time <= dayEnd) {
+            spentTodayCents += amountCents;
+          }
+        }
+      }
+    });
 
-  // Gastos de hoy
-  const spentTodaySnapshot = await db.collection("transactions")
-    .where("userId", "==", userId)
-    .where("type", "==", "EXPENSE")
-    .where("occurredAt", ">=", Timestamp.fromDate(dayRange.start))
-    .where("occurredAt", "<=", Timestamp.fromDate(dayRange.end))
-    .get();
+    const calc = computeDailyBudgetWithRollover({
+      year: monthRange.year,
+      month: monthRange.month,
+      dayOfMonth: dayRange.dayOfMonth,
+      daysInMonth: monthRange.daysInMonth ?? 30,
+      totalIncomeCents,
+      spentBeforeTodayCents,
+      spentTodayCents,
+      savingGoalCents
+    });
 
-  const spentTodayCents = spentTodaySnapshot.docs.reduce((sum, doc) => {
-    return sum + (doc.data().amountCents || 0);
-  }, 0);
-
-  const calc = computeDailyBudgetWithRollover({
-    year: monthRange.year,
-    month: monthRange.month,
-    dayOfMonth: dayRange.dayOfMonth,
-    daysInMonth: monthRange.daysInMonth ?? 30,
-    totalIncomeCents,
-    spentBeforeTodayCents,
-    spentTodayCents,
-    savingGoalCents
-  });
-
-  return { params: { date: dateISO, timeZone: userTimeZone }, data: calc };
+    return { params: { date: dateISO, timeZone: userTimeZone }, data: calc };
+  } catch (error: any) {
+    console.error("getBudgetSummaryForDate error:", error);
+    // Retornar datos vacíos en caso de error
+    return {
+      params: { date: dateISO, timeZone: userTimeZone },
+      data: computeDailyBudgetWithRollover({
+        year: new Date().getFullYear(),
+        month: new Date().getMonth() + 1,
+        dayOfMonth: new Date().getDate(),
+        daysInMonth: 30,
+        totalIncomeCents: 0,
+        spentBeforeTodayCents: 0,
+        spentTodayCents: 0,
+        savingGoalCents: 0
+      })
+    };
+  }
 }

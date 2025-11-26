@@ -25,7 +25,7 @@ export const CategorySchema = z.object({
   type: z.enum(["INCOME","EXPENSE"]),
   parentId: z.preprocess(
     (val) => val === "" || val === undefined || val === null ? null : val,
-    z.string().cuid().nullable().optional()
+    z.string().min(1).nullable().optional()
   ),
   icon: z.preprocess(
     (val) => val === "" || val === undefined || val === null ? null : val,
@@ -38,8 +38,8 @@ export const CategorySchema = z.object({
 });
 
 export const TransactionSchema = z.object({
-  accountId: z.string().cuid(),
-  categoryId: z.string().cuid(), // OBLIGATORIO
+  accountId: z.string().min(1),
+  categoryId: z.string().min(1), // OBLIGATORIO
   type: z.enum(["INCOME","EXPENSE","TRANSFER"]),
   amountCents: z.number().int().positive(), // Solo positivos, redondeados
   currencyCode: z.string().min(3).max(3).default("USD"),
@@ -69,7 +69,7 @@ export const GoalSchema = z.object({
 });
 
 export const CategoryBudgetSchema = z.object({
-  categoryId: z.string().cuid(),
+  categoryId: z.string().min(1),
   month: z.string(), // ISO date string
   budgetCents: z.number().int().positive(),
   alertThreshold: z.number().int().min(0).max(100).default(80)
