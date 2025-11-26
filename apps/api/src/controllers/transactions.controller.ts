@@ -28,61 +28,81 @@ export async function listTransactions(req: AuthRequest, res: Response) {
       sortOrder = "desc"
     } = req.query as any;
 
-    let query: FirebaseFirestore.Query = db.collection("transactions")
-      .where("userId", "==", req.user!.userId);
+    // Obtener todas las transacciones del usuario y filtrar en memoria
+    // Esto evita la necesidad de índices compuestos en Firebase
+    const snapshot = await db.collection("transactions")
+      .where("userId", "==", req.user!.userId)
+      .get();
+
+    let allTransactions = snapshot.docs.map(doc => docToObject(doc));
 
     // Filtros de fecha
     if (from) {
-      query = query.where("occurredAt", ">=", Timestamp.fromDate(new Date(from as string)));
+      const fromDate = new Date(from as string).getTime();
+      allTransactions = allTransactions.filter((tx: any) => {
+        const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
+        return txDate.getTime() >= fromDate;
+      });
     }
     if (to) {
-      query = query.where("occurredAt", "<=", Timestamp.fromDate(new Date(to as string)));
+      const toDate = new Date(to as string).getTime();
+      allTransactions = allTransactions.filter((tx: any) => {
+        const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
+        return txDate.getTime() <= toDate;
+      });
     }
 
     // Filtros básicos
     if (categoryId) {
-      query = query.where("categoryId", "==", String(categoryId));
+      allTransactions = allTransactions.filter((tx: any) => tx.categoryId === String(categoryId));
     }
     if (accountId) {
-      query = query.where("accountId", "==", String(accountId));
+      allTransactions = allTransactions.filter((tx: any) => tx.accountId === String(accountId));
     }
     if (type) {
-      query = query.where("type", "==", type);
+      allTransactions = allTransactions.filter((tx: any) => tx.type === type);
     }
     if (isRecurring !== undefined) {
-      query = query.where("isRecurring", "==", isRecurring === "true");
+      const isRecurringBool = isRecurring === "true";
+      allTransactions = allTransactions.filter((tx: any) => tx.isRecurring === isRecurringBool);
     }
 
-    // Filtros de monto (requiere índice compuesto)
-    if (minAmount || maxAmount) {
-      if (minAmount) {
-        query = query.where("amountCents", ">=", Number(minAmount));
-      }
-      if (maxAmount) {
-        query = query.where("amountCents", "<=", Number(maxAmount));
-      }
+    // Filtros de monto
+    if (minAmount) {
+      allTransactions = allTransactions.filter((tx: any) => tx.amountCents >= Number(minAmount));
+    }
+    if (maxAmount) {
+      allTransactions = allTransactions.filter((tx: any) => tx.amountCents <= Number(maxAmount));
     }
 
-    // Ordenamiento
-    const orderDirection = sortOrder === "asc" ? "asc" : "desc";
-    query = query.orderBy(sortBy || "occurredAt", orderDirection);
+    // Total después de filtros
+    const total = allTransactions.length;
+
+    // Ordenamiento en memoria
+    const orderDirection = sortOrder === "asc" ? 1 : -1;
+    const sortField = sortBy || "occurredAt";
+    allTransactions.sort((a: any, b: any) => {
+      let aVal = a[sortField];
+      let bVal = b[sortField];
+      
+      // Manejar fechas
+      if (sortField === "occurredAt" || sortField === "createdAt") {
+        aVal = aVal instanceof Date ? aVal.getTime() : new Date(aVal).getTime();
+        bVal = bVal instanceof Date ? bVal.getTime() : new Date(bVal).getTime();
+      }
+      
+      if (aVal < bVal) return -1 * orderDirection;
+      if (aVal > bVal) return 1 * orderDirection;
+      return 0;
+    });
 
     // Paginación con límite de seguridad
     const requestedPageSize = Math.min(Number(pageSize) || DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
     const skip = (Math.max(1, Number(page)) - 1) * requestedPageSize;
     const take = requestedPageSize;
 
-    // Ejecutar query
-    const snapshot = await query.offset(skip).limit(take).get();
-    
-    // Obtener total (query separada para count)
-    const countSnapshot = await db.collection("transactions")
-      .where("userId", "==", req.user!.userId)
-      .count()
-      .get();
-    const total = countSnapshot.data().count;
-
-    let transactions = snapshot.docs.map(doc => docToObject(doc));
+    // Aplicar paginación
+    let transactions = allTransactions.slice(skip, skip + take);
 
     // Filtro por tag (post-procesamiento si no se puede hacer en query)
     if (tagId) {
