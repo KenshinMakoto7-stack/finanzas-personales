@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  // Skip static generation for error pages to avoid React version conflicts
+  output: 'standalone',
   // Permitir service worker
   async headers() {
     return [
