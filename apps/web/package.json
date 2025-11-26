@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
-    "@pf/shared": "file:../../packages/shared",
     "axios": "^1.6.8",
     "next": "^14.2.5",
     "react": "^18.2.0",
