@@ -17,11 +17,22 @@ export async function listCategories(req: AuthRequest, res: Response) {
       query = query.where("type", "==", type);
     }
 
-    query = query.orderBy("createdAt", "asc");
+    // Solo ordenar si no hay filtro por tipo (evita necesidad de índice compuesto)
+    if (!type) {
+      query = query.orderBy("createdAt", "asc");
+    }
 
     const snapshot = await query.get();
-    const rows = snapshot.docs.map(doc => docToObject(doc));
-
+    
+    // Si hay filtro por tipo, ordenar en memoria
+    let rows = snapshot.docs.map(doc => docToObject(doc));
+    if (type) {
+      rows = rows.sort((a: any, b: any) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateA - dateB;
+      });
+    }
     if (tree) {
       // Devolver en formato árbol (solo raíces con sus hijos)
       const roots = rows.filter((c: any) => !c.parentId);
