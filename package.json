@@ -14,6 +14,10 @@
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces"
   },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
   "devDependencies": {
     "sharp": "^0.34.5",
     "typescript": "^5.6.3"
