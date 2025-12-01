@@ -31,7 +31,21 @@ export default function SignupPage() {
       });
       router.push("/dashboard");
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? "Error al crear la cuenta. Intenta nuevamente.");
+      // Mejorar manejo de errores
+      let errorMessage = "Error al crear la cuenta. Intenta nuevamente.";
+      
+      if (err?.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.code === "ECONNABORTED") {
+        errorMessage = "La solicitud tardó demasiado. Verifica tu conexión e intenta nuevamente.";
+      } else if (err?.code === "ECONNREFUSED" || err?.message?.includes("Network Error")) {
+        errorMessage = "No se pudo conectar con el servidor. Verifica tu conexión.";
+      }
+      
+      setError(errorMessage);
+      console.error("Error en registro:", err);
     } finally {
       setLoading(false);
     }

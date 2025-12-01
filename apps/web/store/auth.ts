@@ -46,9 +46,14 @@ export const useAuth = create<State>()(
           setAuthToken(res.data.token);
           set({ token: res.data.token, user: res.data.user });
         } catch (error: any) {
-          if (error.code === "ECONNREFUSED" || error.message?.includes("Network Error")) {
-            throw new Error("No se pudo conectar con el servidor.");
+          // Mejorar manejo de errores con más detalles
+          if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
+            throw new Error("La solicitud tardó demasiado. Verifica tu conexión e intenta nuevamente.");
           }
+          if (error.code === "ECONNREFUSED" || error.message?.includes("Network Error")) {
+            throw new Error("No se pudo conectar con el servidor. Verifica tu conexión.");
+          }
+          // Re-lanzar el error para que el componente lo maneje
           throw error;
         }
       }
