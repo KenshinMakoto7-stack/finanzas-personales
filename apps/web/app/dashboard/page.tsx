@@ -78,7 +78,16 @@ export default function Dashboard() {
           const dayOfMonth = isCurrentMonth ? today.getDate() : new Date(year, month, 0).getDate();
           const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(dayOfMonth).padStart(2, "0")}`;
       
-      const res = await api.get(`/budget/summary?date=${dateStr}`);
+      // Usar catch para manejar 401 sin romper el flujo
+      const res = await api.get(`/budget/summary?date=${dateStr}`).catch((err) => {
+        if (err?.response?.status === 401) {
+          // Si es 401, intentar recargar el token o redirigir
+          logout();
+          router.push("/login");
+          throw err;
+        }
+        throw err;
+      });
       setData(res.data.data);
 
       // Cargar datos mensuales

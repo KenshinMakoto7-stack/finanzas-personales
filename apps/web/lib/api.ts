@@ -10,6 +10,12 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Manejar 401 Unauthorized - token expirado o inválido
+    if (error.response?.status === 401) {
+      // No hacer nada aquí, dejar que cada componente maneje el 401
+      // Algunos componentes redirigen al login, otros muestran un mensaje
+      return Promise.reject(error);
+    }
     // Manejar timeout
     if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
       error.message = "La solicitud tardó demasiado. Por favor, intenta nuevamente.";

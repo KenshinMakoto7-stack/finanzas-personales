@@ -136,6 +136,7 @@ export function captureMessage(
 
 /**
  * Inicia una transacción para medir performance
+ * NOTA: Esta función no se usa actualmente, pero se mantiene para compatibilidad
  */
 export function startTransaction(name: string, op: string) {
   if (!SENTRY_DSN) {
@@ -146,7 +147,14 @@ export function startTransaction(name: string, op: string) {
     };
   }
 
-  return Sentry.startInactiveSpan({ name, op });
+  // Deshabilitar temporalmente para evitar el error "trace parameter is missing"
+  // Si necesitas performance monitoring, usa Sentry.startSpan directamente en el código
+  logger.debug(`Transaction ${name} skipped (not implemented)`);
+  return {
+    finish: () => {},
+    setStatus: () => {},
+    startChild: () => ({ finish: () => {} }),
+  };
 }
 
 /**
