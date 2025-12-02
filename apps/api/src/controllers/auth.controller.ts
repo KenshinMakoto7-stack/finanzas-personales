@@ -306,7 +306,15 @@ export async function requestPasswordReset(req: Request, res: Response) {
           ]) as string;
           logger.info(`✅ Password reset link generated for: ${email}`);
         } catch (error: any) {
-          // Si el usuario no existe o hay error de Firebase, loguear pero no revelar
+          // Manejar errores específicos de Firebase
+          if (error?.code === "auth/reset-password-exceed-limit" || 
+              error?.message?.includes("RESET_PASSWORD_EXCEED_LIMIT")) {
+            logger.warn(`⚠️ Password reset limit exceeded for: ${email}. Firebase bloqueó la solicitud por demasiados intentos.`);
+            logger.warn(`💡 El usuario debe esperar antes de intentar nuevamente.`);
+            return; // Salir temprano - no enviar email
+          }
+          
+          // Si el usuario no existe o hay otro error de Firebase, loguear pero no revelar
           logger.error("❌ Error generating password reset link", error);
           return; // Salir temprano si no se puede generar el link
         }

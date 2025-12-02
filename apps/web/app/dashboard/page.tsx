@@ -37,6 +37,19 @@ export default function Dashboard() {
   const [dailyData, setDailyData] = useState<any>(null);
   const [previousMonthData, setPreviousMonthData] = useState<any>(null);
   const [pendingRecurring, setPendingRecurring] = useState<any[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0); // Key para forzar recarga
+
+  // Detectar cuando la página gana foco (usuario vuelve de otra página)
+  useEffect(() => {
+    const handleFocus = () => {
+      // Recargar datos cuando la ventana gana foco (usuario vuelve de crear transacción)
+      if (user && token) {
+        loadData();
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [user, token]);
 
   useEffect(() => {
     // Esperar a que Zustand rehidrate
@@ -52,7 +65,7 @@ export default function Dashboard() {
 
     setAuthToken(token);
     loadData();
-  }, [user, token, initialized, selectedDate, router, initAuth]);
+  }, [user, token, initialized, selectedDate, router, initAuth, refreshKey]);
 
   async function loadData() {
     setLoading(true);
@@ -862,33 +875,40 @@ export default function Dashboard() {
             </div>
           </div>
 
-              {data && monthlyData && (
-                <div style={{
-                  background: "white",
-                  borderRadius: "16px",
-                  padding: "24px",
-                  boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
-                }}>
-                  <div style={{ color: "#666", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
-                    Promedio Diario Disponible
-                  </div>
-                  <div style={{ fontSize: "32px", fontWeight: "700", color: "#667eea", marginBottom: "8px" }}>
-                    {(() => {
-                      // Usar availableBalance que ya tiene la meta de ahorro descontada
-                      const availableBalance = monthlyData.availableBalance !== undefined 
-                        ? monthlyData.availableBalance 
-                        : monthlyData.balance;
-                      const remainingDays = data.startOfDay.remainingDaysIncludingToday;
-                      return remainingDays > 0 && availableBalance > 0
-                        ? fmtMoney(Math.floor(availableBalance / remainingDays), user.currencyCode)
-                        : fmtMoney(0, user.currencyCode);
-                    })()}
-                  </div>
-                  <div style={{ color: "#999", fontSize: "12px" }}>
-                    {data.startOfDay.remainingDaysIncludingToday} días restantes
-                  </div>
-                </div>
-              )}
+          <div style={{
+            background: "white",
+            borderRadius: "16px",
+            padding: "24px",
+            boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+          }}>
+            <div style={{ color: "#666", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
+              Presupuesto Diario Restante
+            </div>
+            <div style={{ fontSize: "32px", fontWeight: "700", color: "#667eea", marginBottom: "8px" }}>
+              {(() => {
+                if (!monthlyData || !data) return "...";
+                
+                // Calcular: (Ingresos - Ahorros - Gastos) / días restantes
+                const availableBalance = monthlyData.availableBalance !== undefined 
+                  ? monthlyData.availableBalance 
+                  : (monthlyData.totalIncome - monthlyData.totalExpenses - (monthlyData.goalCents || 0));
+                
+                const remainingDays = data.startOfDay?.remainingDaysIncludingToday || 0;
+                
+                if (remainingDays <= 0) {
+                  return fmtMoney(0, user.currencyCode);
+                }
+                
+                const dailyBudget = Math.floor(availableBalance / remainingDays);
+                return fmtMoney(dailyBudget, user.currencyCode);
+              })()}
+            </div>
+            <div style={{ color: "#999", fontSize: "12px" }}>
+              {data?.startOfDay?.remainingDaysIncludingToday 
+                ? `${data.startOfDay.remainingDaysIncludingToday} días restantes`
+                : "Calculando..."}
+            </div>
+          </div>
         </div>
 
         {/* Meta de Ahorro */}

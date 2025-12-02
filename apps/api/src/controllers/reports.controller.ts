@@ -15,14 +15,16 @@ export async function monthlyByCategory(req: AuthRequest, res: Response) {
     const end = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
     // Obtener transacciones del mes
+    // Evitar índice compuesto: consultar solo por userId y occurredAt, filtrar type en memoria
     const snapshot = await db.collection("transactions")
       .where("userId", "==", req.user!.userId)
-      .where("type", "==", type)
       .where("occurredAt", ">=", Timestamp.fromDate(start))
       .where("occurredAt", "<=", Timestamp.fromDate(end))
       .get();
 
-    const txs = snapshot.docs.map(doc => docToObject(doc));
+    const txs = snapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => tx.type === type);
 
     // Agrupar por categoría
     const categoryMap = new Map<string, number>();

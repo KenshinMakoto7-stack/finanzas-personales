@@ -164,10 +164,12 @@ export default function TagsPage() {
             </h3>
             <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               <div>
-                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: "600" }}>
+                <label htmlFor="tag-name-input" style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: "600" }}>
                   Nombre
                 </label>
                 <input
+                  id="tag-name-input"
+                  name="tag-name"
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -183,11 +185,13 @@ export default function TagsPage() {
                 />
               </div>
               <div>
-                <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: "600" }}>
+                <label htmlFor="tag-color-input" style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: "600" }}>
                   Color
                 </label>
                 <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
                   <input
+                    id="tag-color-picker-input"
+                    name="tag-color-picker"
                     type="color"
                     value={formData.color}
                     onChange={(e) => setFormData({ ...formData, color: e.target.value })}
@@ -200,6 +204,8 @@ export default function TagsPage() {
                     }}
                   />
                   <input
+                    id="tag-color-input"
+                    name="tag-color"
                     type="text"
                     value={formData.color}
                     onChange={(e) => setFormData({ ...formData, color: e.target.value })}

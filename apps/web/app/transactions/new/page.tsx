@@ -189,7 +189,12 @@ export default function NewTransactionPage() {
       setRecurringOccurrences("indefinite");
       setNotifications([]);
       setTimeout(() => {
-        router.push("/dashboard");
+        // Forzar recarga del dashboard agregando timestamp a la URL
+        router.push("/dashboard?refresh=" + Date.now());
+        // También recargar la página para asegurar que los datos se actualicen
+        setTimeout(() => {
+          window.location.reload();
+        }, 100);
       }, 1500);
     } catch (err: any) {
       const errorData = err?.response?.data?.error;
@@ -372,6 +377,8 @@ export default function NewTransactionPage() {
                 marginBottom: "12px"
               }}>
                 <input
+                  id="new-category-name"
+                  name="new-category-name"
                   type="text"
                   placeholder="Nombre de la categoría"
                   value={newCategoryName}
@@ -494,7 +501,7 @@ export default function NewTransactionPage() {
           </div>
 
           <div style={{ marginBottom: "24px" }}>
-            <label style={{
+            <label htmlFor="transaction-amount" style={{
               display: "block",
               marginBottom: "8px",
               color: "#333",
@@ -504,6 +511,8 @@ export default function NewTransactionPage() {
               Importe * (solo números enteros)
             </label>
             <input
+              id="transaction-amount"
+              name="transaction-amount"
               type="number"
               step="1"
               min="1"
@@ -530,7 +539,7 @@ export default function NewTransactionPage() {
           </div>
 
           <div style={{ marginBottom: "24px" }}>
-            <label style={{
+            <label htmlFor="transaction-date" style={{
               display: "block",
               marginBottom: "8px",
               color: "#333",
@@ -540,6 +549,8 @@ export default function NewTransactionPage() {
               Fecha y Hora *
             </label>
             <input
+              id="transaction-date"
+              name="transaction-date"
               type="datetime-local"
               value={occurredAt}
               onChange={(e) => setOccurredAt(e.target.value)}
@@ -568,6 +579,8 @@ export default function NewTransactionPage() {
               Descripción (opcional)
             </label>
             <input
+              id="transaction-description"
+              name="transaction-description"
               type="text"
               placeholder="Nota sobre esta transacción"
               value={desc}

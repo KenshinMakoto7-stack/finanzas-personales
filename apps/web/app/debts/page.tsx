@@ -347,10 +347,12 @@ export default function DebtsPage() {
             <form onSubmit={handleSubmit}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "16px", marginBottom: "16px" }}>
                 <div>
-                  <label style={{ display: "block", marginBottom: "8px", fontWeight: "600", fontSize: "14px" }}>
+                  <label htmlFor="debt-description" style={{ display: "block", marginBottom: "8px", fontWeight: "600", fontSize: "14px" }}>
                     Descripción *
                   </label>
                   <input
+                    id="debt-description"
+                    name="debt-description"
                     type="text"
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -366,10 +368,12 @@ export default function DebtsPage() {
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", marginBottom: "8px", fontWeight: "600", fontSize: "14px" }}>
+                  <label htmlFor="debt-total-amount" style={{ display: "block", marginBottom: "8px", fontWeight: "600", fontSize: "14px" }}>
                     Monto Total *
                   </label>
                   <input
+                    id="debt-total-amount"
+                    name="debt-total-amount"
                     type="number"
                     step="0.01"
                     value={formData.totalAmountCents}
@@ -386,10 +390,12 @@ export default function DebtsPage() {
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", marginBottom: "8px", fontWeight: "600", fontSize: "14px" }}>
+                  <label htmlFor="debt-monthly-payment" style={{ display: "block", marginBottom: "8px", fontWeight: "600", fontSize: "14px" }}>
                     Cuota Mensual *
                   </label>
                   <input
+                    id="debt-monthly-payment"
+                    name="debt-monthly-payment"
                     type="number"
                     step="0.01"
                     value={formData.monthlyPaymentCents}
@@ -406,10 +412,12 @@ export default function DebtsPage() {
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", marginBottom: "8px", fontWeight: "600", fontSize: "14px" }}>
+                  <label htmlFor="debt-total-installments" style={{ display: "block", marginBottom: "8px", fontWeight: "600", fontSize: "14px" }}>
                     Total de Cuotas *
                   </label>
                   <input
+                    id="debt-total-installments"
+                    name="debt-total-installments"
                     type="number"
                     value={formData.totalInstallments}
                     onChange={(e) => setFormData({ ...formData, totalInstallments: e.target.value })}

@@ -111,7 +111,7 @@ export default function ForgotPasswordPage() {
         ) : (
           <form onSubmit={onSubmit}>
             <div style={{ marginBottom: "20px" }}>
-              <label style={{ 
+              <label htmlFor="forgot-password-email" style={{ 
                 display: "block", 
                 marginBottom: "8px", 
                 color: "#333", 
@@ -121,6 +121,8 @@ export default function ForgotPasswordPage() {
                 Email
               </label>
               <input
+                id="forgot-password-email"
+                name="forgot-password-email"
                 type="email"
                 placeholder="tu@email.com"
                 value={email}

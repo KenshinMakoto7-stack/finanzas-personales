@@ -1,0 +1,23 @@
+# Comandos para ejecutar en PowerShell
+
+cd C:\Users\Gamer\Desktop\PROYECTO_APP_FINANZA
+
+# Ver estado
+git status
+
+# Ver commits locales
+git log --oneline -3
+
+# Agregar cambios
+git add apps/api/src/controllers/statistics.controller.ts
+git add apps/api/src/server/app.ts
+
+# Commit
+git commit -m "fix: Corregir todas las consultas de Firestore para evitar índices compuestos"
+
+# Push
+git push origin main
+
+# Verificar
+git log --oneline -1
+

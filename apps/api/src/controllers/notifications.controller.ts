@@ -126,16 +126,19 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
 
     for (const budget of budgets) {
       // Obtener gastos del mes
-      const expensesSnapshot = await db.collection("transactions")
+      // Evitar índice compuesto: consultar solo por userId y occurredAt, filtrar categoryId y type en memoria
+      const transactionsSnapshot = await db.collection("transactions")
         .where("userId", "==", userId)
-        .where("categoryId", "==", budget.categoryId)
-        .where("type", "==", "EXPENSE")
         .where("occurredAt", ">=", Timestamp.fromDate(monthStart))
         .where("occurredAt", "<=", Timestamp.fromDate(monthEnd))
         .get();
 
-      const spentCents = expensesSnapshot.docs.reduce((sum, doc) => {
-        return sum + (doc.data().amountCents || 0);
+      const expenses = transactionsSnapshot.docs
+        .map(doc => docToObject(doc))
+        .filter((tx: any) => tx.type === "EXPENSE" && tx.categoryId === budget.categoryId);
+
+      const spentCents = expenses.reduce((sum: number, tx: any) => {
+        return sum + (tx.amountCents || 0);
       }, 0);
 
       const percentage = budget.budgetCents > 0

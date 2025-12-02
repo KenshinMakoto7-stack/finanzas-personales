@@ -37,9 +37,11 @@ export function FormInput<T extends FieldValues>({
 }: FormInputProps<T>) {
   const error = form.formState.errors[name];
 
+  const inputId = `input-${String(name)}`;
   return (
     <div style={{ marginBottom: 16 }}>
       <label
+        htmlFor={inputId}
         style={{
           display: "block",
           marginBottom: 6,
@@ -52,6 +54,8 @@ export function FormInput<T extends FieldValues>({
       </label>
       <input
         {...form.register(name)}
+        id={inputId}
+        name={String(name)}
         type={type}
         placeholder={placeholder}
         disabled={disabled}
@@ -106,10 +110,12 @@ export function FormSelect<T extends FieldValues>({
   disabled,
 }: FormSelectProps<T>) {
   const error = form.formState.errors[name];
+  const selectId = `select-${String(name)}`;
 
   return (
     <div style={{ marginBottom: 16 }}>
       <label
+        htmlFor={selectId}
         style={{
           display: "block",
           marginBottom: 6,
@@ -122,6 +128,8 @@ export function FormSelect<T extends FieldValues>({
       </label>
       <select
         {...form.register(name)}
+        id={selectId}
+        name={String(name)}
         disabled={disabled}
         style={{
           width: "100%",
@@ -180,10 +188,12 @@ export function FormTextarea<T extends FieldValues>({
   disabled,
 }: FormTextareaProps<T>) {
   const error = form.formState.errors[name];
+  const textareaId = `textarea-${String(name)}`;
 
   return (
     <div style={{ marginBottom: 16 }}>
       <label
+        htmlFor={textareaId}
         style={{
           display: "block",
           marginBottom: 6,
@@ -196,6 +206,8 @@ export function FormTextarea<T extends FieldValues>({
       </label>
       <textarea
         {...form.register(name)}
+        id={textareaId}
+        name={String(name)}
         placeholder={placeholder}
         rows={rows}
         disabled={disabled}
