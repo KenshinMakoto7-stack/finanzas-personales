@@ -124,18 +124,25 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
 
     const budgetCategoriesMap = new Map(budgetCategories.map((c: any) => [c.id, c]));
 
-    for (const budget of budgets) {
-      // Obtener gastos del mes
-      // Evitar índice compuesto: consultar solo por userId y occurredAt, filtrar categoryId y type en memoria
-      const transactionsSnapshot = await db.collection("transactions")
-        .where("userId", "==", userId)
-        .where("occurredAt", ">=", Timestamp.fromDate(monthStart))
-        .where("occurredAt", "<=", Timestamp.fromDate(monthEnd))
-        .get();
+    // Obtener todas las transacciones del mes una sola vez para evitar múltiples consultas
+    const allTransactionsSnapshot = await db.collection("transactions")
+      .where("userId", "==", userId)
+      .get();
+    
+    const allTransactions = allTransactionsSnapshot.docs.map(doc => docToObject(doc));
+    const monthStartTime = monthStart.getTime();
+    const monthEndTime = monthEnd.getTime();
 
-      const expenses = transactionsSnapshot.docs
-        .map(doc => docToObject(doc))
-        .filter((tx: any) => tx.type === "EXPENSE" && tx.categoryId === budget.categoryId);
+    for (const budget of budgets) {
+      // Filtrar transacciones en memoria para evitar índices compuestos
+      const expenses = allTransactions.filter((tx: any) => {
+        const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
+        const txTime = txDate.getTime();
+        return tx.type === "EXPENSE" 
+          && tx.categoryId === budget.categoryId
+          && txTime >= monthStartTime 
+          && txTime <= monthEndTime;
+      });
 
       const spentCents = expenses.reduce((sum: number, tx: any) => {
         return sum + (tx.amountCents || 0);
@@ -176,14 +183,13 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
     if (!goalSnapshot.empty) {
       const goal = docToObject(goalSnapshot.docs[0]);
 
-      // Obtener transacciones del mes
-      const transactionsSnapshot = await db.collection("transactions")
-        .where("userId", "==", userId)
-        .where("occurredAt", ">=", Timestamp.fromDate(monthStart))
-        .where("occurredAt", "<=", Timestamp.fromDate(monthEnd))
-        .get();
-
-      const transactions = transactionsSnapshot.docs.map(doc => docToObject(doc));
+      // Usar las transacciones ya obtenidas anteriormente para evitar índices compuestos
+      // Filtrar en memoria las transacciones del mes
+      const transactions = allTransactions.filter((tx: any) => {
+        const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
+        const txTime = txDate.getTime();
+        return txTime >= monthStartTime && txTime <= monthEndTime;
+      });
 
       const totalIncome = transactions
         .filter((t: any) => t.type === "INCOME")

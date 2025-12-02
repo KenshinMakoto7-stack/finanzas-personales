@@ -39,24 +39,33 @@ export async function listCategoryBudgets(req: AuthRequest, res: Response) {
         return dateB - dateA; // desc
       });
 
+    // Obtener todas las transacciones del usuario una sola vez para evitar múltiples consultas
+    // Esto evita problemas de índices compuestos
+    const allTransactionsSnapshot = await db.collection("transactions")
+      .where("userId", "==", userId)
+      .get();
+    
+    const allTransactions = allTransactionsSnapshot.docs.map(doc => docToObject(doc));
+
     // Calcular gastos actuales por categoría
     const budgetsWithSpent = await Promise.all(
       budgets.map(async (budget: any) => {
         const startOfMonth = budget.month instanceof Date ? budget.month : new Date(budget.month);
         const endOfMonth = new Date(startOfMonth);
         endOfMonth.setMonth(endOfMonth.getMonth() + 1);
+        
+        const startTime = startOfMonth.getTime();
+        const endTime = endOfMonth.getTime();
 
-        // Obtener gastos del mes para esta categoría
-        // Evitar índice compuesto: consultar solo por userId y occurredAt, filtrar categoryId y type en memoria
-        const transactionsSnapshot = await db.collection("transactions")
-          .where("userId", "==", userId)
-          .where("occurredAt", ">=", Timestamp.fromDate(startOfMonth))
-          .where("occurredAt", "<", Timestamp.fromDate(endOfMonth))
-          .get();
-
-        const expenses = transactionsSnapshot.docs
-          .map(doc => docToObject(doc))
-          .filter((tx: any) => tx.type === "EXPENSE" && tx.categoryId === budget.categoryId);
+        // Filtrar transacciones en memoria para evitar índices compuestos
+        const expenses = allTransactions.filter((tx: any) => {
+          const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
+          const txTime = txDate.getTime();
+          return tx.type === "EXPENSE" 
+            && tx.categoryId === budget.categoryId
+            && txTime >= startTime 
+            && txTime < endTime;
+        });
 
         const spentCents = expenses.reduce((sum: number, tx: any) => {
           return sum + (tx.amountCents || 0);
