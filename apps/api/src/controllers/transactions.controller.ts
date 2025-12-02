@@ -397,8 +397,7 @@ export async function getTransaction(req: AuthRequest, res: Response) {
     }
     
     if (transaction.tagIds && Array.isArray(transaction.tagIds) && transaction.tagIds.length > 0) {
-      const tagDocs = await getDocumentsByIds(db.collection("tags"), transaction.tagIds);
-      transaction.tags = tagDocs.map(doc => docToObject(doc));
+      transaction.tags = await getDocumentsByIds("tags", transaction.tagIds);
     }
 
     res.json({ transaction });
