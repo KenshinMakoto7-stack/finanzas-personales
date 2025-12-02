@@ -20,7 +20,21 @@ export default function ForgotPasswordPage() {
       await api.post("/auth/forgot-password", { email });
       setSuccess(true);
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? "Error al solicitar recuperación de contraseña");
+      // Mejorar manejo de errores
+      let errorMessage = "Error al solicitar recuperación de contraseña";
+      
+      if (err?.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.code === "ECONNABORTED") {
+        errorMessage = "La solicitud tardó demasiado. Verifica tu conexión e intenta nuevamente.";
+      } else if (err?.code === "ECONNREFUSED" || err?.message?.includes("Network Error")) {
+        errorMessage = "No se pudo conectar con el servidor. Verifica tu conexión.";
+      }
+      
+      setError(errorMessage);
+      console.error("Error en recuperación de contraseña:", err);
     } finally {
       setLoading(false);
     }

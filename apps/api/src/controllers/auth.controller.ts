@@ -286,17 +286,43 @@ export async function requestPasswordReset(req: Request, res: Response) {
       return res.status(400).json({ error: "Email es requerido" });
     }
 
-    // Generar link de reset usando Firebase Auth
-    const resetLink = await auth.generatePasswordResetLink(email);
+    logger.info(`🔐 Password reset requested for: ${email}`);
 
-    // Enviar email
-    await sendPasswordResetEmail(email, resetLink);
-
-    // Por seguridad, siempre devolvemos éxito
+    // IMPORTANTE: Responder inmediatamente, luego procesar en background
+    // Por seguridad, siempre devolvemos éxito (no revelamos si el email existe o no)
     res.json({ message: "Si el email existe, recibirás un enlace para recuperar tu contraseña" });
+
+    // Procesar en background (no bloquea la respuesta)
+    (async () => {
+      try {
+        // Generar link de reset usando Firebase Auth con timeout
+        let resetLink: string;
+        try {
+          resetLink = await Promise.race([
+            auth.generatePasswordResetLink(email),
+            new Promise<string>((_, reject) => 
+              setTimeout(() => reject(new Error("Firebase timeout")), 15000)
+            )
+          ]) as string;
+          logger.info(`✅ Password reset link generated for: ${email}`);
+        } catch (error: any) {
+          // Si el usuario no existe o hay error de Firebase, loguear pero no revelar
+          logger.error("❌ Error generating password reset link", error);
+          return; // Salir temprano si no se puede generar el link
+        }
+
+        // Enviar email (no bloqueante - ya respondimos al cliente)
+        sendPasswordResetEmail(email, resetLink).catch((emailError) => {
+          logger.error("❌ Error sending password reset email (non-blocking)", emailError);
+        });
+      } catch (error: any) {
+        logger.error("❌ Error in background password reset processing", error);
+      }
+    })();
   } catch (error: any) {
-    // Si el usuario no existe, Firebase lanzará error, pero por seguridad no lo revelamos
-    logger.error("Password reset request error", error);
+    // Catch-all para cualquier error inesperado
+    logger.error("Password reset request error (unexpected)", error);
+    // Por seguridad, siempre devolvemos éxito (no revelamos si el email existe o no)
     res.json({ message: "Si el email existe, recibirás un enlace para recuperar tu contraseña" });
   }
 }

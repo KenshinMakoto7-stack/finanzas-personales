@@ -34,10 +34,12 @@ const createTransporter = () => {
     port,
     secure: port === 465,
     auth: { user, pass },
+    connectionTimeout: 10000, // 10 segundos timeout
+    socketTimeout: 10000, // 10 segundos timeout
   });
 };
 
-export async function sendPasswordResetEmail(email: string, resetUrl: string) {
+export async function sendPasswordResetEmail(email: string, resetUrl: string): Promise<boolean> {
   // Verificar configuración de email
   const hasSmtpConfig = process.env.SMTP_USER && process.env.SMTP_PASS;
   const hasSendgridConfig = process.env.SENDGRID_API_KEY;
@@ -46,14 +48,28 @@ export async function sendPasswordResetEmail(email: string, resetUrl: string) {
   if (!hasSmtpConfig && !hasSendgridConfig && !hasResendConfig) {
     logger.warn("Email service not configured. Set SMTP_USER/SMTP_PASS, SENDGRID_API_KEY, or RESEND_API_KEY");
     logger.info(`Password reset requested for ${email}. Reset URL: ${resetUrl}`);
-    return;
+    logger.warn(`⚠️ EMAIL NO ENVIADO - Configura las variables de entorno de email en Render`);
+    return false; // Indica que NO se envió
   }
 
   try {
     const transporter = createTransporter();
 
+    // Determinar el email "from" según el proveedor
+    let fromEmail: string;
+    if (hasSendgridConfig) {
+      // SendGrid requiere un email verificado en su dashboard
+      fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.SMTP_USER || "noreply@finanzas-personales.com";
+    } else if (hasResendConfig) {
+      // Resend requiere un email verificado en su dashboard
+      fromEmail = process.env.RESEND_FROM_EMAIL || process.env.SMTP_USER || "noreply@finanzas-personales.com";
+    } else {
+      // SMTP genérico
+      fromEmail = process.env.SMTP_USER || "noreply@finanzas-personales.com";
+    }
+
     const mailOptions = {
-      from: `"Finanzas Personales" <${process.env.SMTP_USER}>`,
+      from: `"Finanzas Personales" <${fromEmail}>`,
       to: email,
       subject: "Recuperación de Contraseña - Finanzas Personales",
       html: `
@@ -108,13 +124,21 @@ export async function sendPasswordResetEmail(email: string, resetUrl: string) {
       `,
     };
 
-    await transporter.sendMail(mailOptions);
-    logger.info(`Password reset email sent to ${email}`);
+    // Agregar timeout de 10 segundos para el envío de email
+    await Promise.race([
+      transporter.sendMail(mailOptions),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Email send timeout")), 10000)
+      )
+    ]);
+    logger.info(`✅ Password reset email sent successfully to ${email}`);
+    return true; // Indica que SÍ se envió
   } catch (error) {
-    logger.error("Error sending password reset email", error as Error, { email });
+    logger.error("❌ Error sending password reset email", error as Error, { email });
     // Fallback: log the reset URL for manual recovery
-    logger.info(`Password reset URL for ${email}: ${resetUrl}`);
-    throw error; // Re-throw para que el controller pueda manejarlo
+    logger.warn(`⚠️ Password reset URL for ${email} (email failed): ${resetUrl}`);
+    // NO re-throw - solo loguear el error y retornar false
+    return false; // Indica que NO se envió
   }
 }
 

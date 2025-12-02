@@ -365,6 +365,49 @@ export async function updateTransaction(req: AuthRequest, res: Response) {
   }
 }
 
+export async function getTransaction(req: AuthRequest, res: Response) {
+  try {
+    const transactionId = req.params.id;
+    const transactionDoc = await db.collection("transactions").doc(transactionId).get();
+
+    if (!transactionDoc.exists) {
+      return res.status(404).json({ error: "Transacción no encontrada" });
+    }
+
+    const transactionData = transactionDoc.data()!;
+    if (transactionData.userId !== req.user!.userId) {
+      return res.status(403).json({ error: "No autorizado" });
+    }
+
+    const transaction = docToObject(transactionDoc);
+    
+    // Enriquecer con datos relacionados
+    if (transaction.accountId) {
+      const accountDoc = await db.collection("accounts").doc(transaction.accountId).get();
+      if (accountDoc.exists) {
+        transaction.account = docToObject(accountDoc);
+      }
+    }
+    
+    if (transaction.categoryId) {
+      const categoryDoc = await db.collection("categories").doc(transaction.categoryId).get();
+      if (categoryDoc.exists) {
+        transaction.category = docToObject(categoryDoc);
+      }
+    }
+    
+    if (transaction.tagIds && Array.isArray(transaction.tagIds) && transaction.tagIds.length > 0) {
+      const tagDocs = await getDocumentsByIds(db.collection("tags"), transaction.tagIds);
+      transaction.tags = tagDocs.map(doc => docToObject(doc));
+    }
+
+    res.json({ transaction });
+  } catch (error: any) {
+    console.error("Get transaction error:", error);
+    res.status(500).json({ error: error.message || "Error al obtener transacción" });
+  }
+}
+
 export async function deleteTransaction(req: AuthRequest, res: Response) {
   try {
     const transactionId = req.params.id;
