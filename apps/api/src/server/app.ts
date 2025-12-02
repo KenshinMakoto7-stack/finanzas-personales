@@ -32,7 +32,8 @@ initMonitoring();
 const app = express();
 
 // Configurar trust proxy para Render (necesario para rate limiting correcto)
-app.set('trust proxy', true);
+// Configurar específicamente para Render: confiar solo en el primer proxy (Render)
+app.set('trust proxy', 1);
 
 // Request logging estructurado
 app.use(requestLogger());

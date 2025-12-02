@@ -46,14 +46,23 @@ export async function expensesByCategory(req: AuthRequest, res: Response) {
     }
 
     // Obtener transacciones con su moneda para convertir
-    const expenseSnapshot = await db.collection("transactions")
+    // Evitar índice compuesto: consultar solo por userId, filtrar occurredAt y type en memoria
+    const allTransactionsSnapshot = await db.collection("transactions")
       .where("userId", "==", req.user!.userId)
-      .where("type", "==", "EXPENSE")
-      .where("occurredAt", ">=", Timestamp.fromDate(start))
-      .where("occurredAt", "<=", Timestamp.fromDate(end))
       .get();
 
-    const expenseTransactions = expenseSnapshot.docs.map(doc => docToObject(doc));
+    const startTime = start.getTime();
+    const endTime = end.getTime();
+
+    const expenseTransactions = allTransactionsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => {
+        // Filtrar por tipo y fecha en memoria
+        if (tx.type !== "EXPENSE") return false;
+        const txDate = tx.occurredAt?.toDate?.() || new Date(tx.occurredAt);
+        const txTime = txDate.getTime();
+        return txTime >= startTime && txTime <= endTime;
+      });
 
     // Convertir todas a UYU (moneda base para comparaciones)
     const baseCurrency = userData.currencyCode || "UYU";
@@ -140,22 +149,14 @@ export async function savingsStatistics(req: AuthRequest, res: Response) {
     const baseCurrency = userData.currencyCode || "UYU";
 
     // OPTIMIZACIÓN: Una query para todo el año en lugar de 12 queries por mes
-    const yearStartTimestamp = Timestamp.fromDate(yearStart);
-    const yearEndTimestamp = Timestamp.fromDate(yearEnd);
+    // NOTA: Evitamos índice compuesto consultando solo por userId, luego filtramos por occurredAt y type en memoria
+    const yearStartTime = yearStart.getTime();
+    const yearEndTime = yearEnd.getTime();
 
-    // Obtener todas las transacciones del año de una vez
-    const [allIncomeSnapshot, allExpenseSnapshot, savingsAccountsSnapshot] = await Promise.all([
+    // Obtener todas las transacciones del usuario (sin filtrar por fecha para evitar índice compuesto)
+    const [allTransactionsSnapshot, savingsAccountsSnapshot] = await Promise.all([
       db.collection("transactions")
         .where("userId", "==", req.user!.userId)
-        .where("type", "==", "INCOME")
-        .where("occurredAt", ">=", yearStartTimestamp)
-        .where("occurredAt", "<=", yearEndTimestamp)
-        .get(),
-      db.collection("transactions")
-        .where("userId", "==", req.user!.userId)
-        .where("type", "==", "EXPENSE")
-        .where("occurredAt", ">=", yearStartTimestamp)
-        .where("occurredAt", "<=", yearEndTimestamp)
         .get(),
       db.collection("accounts")
         .where("userId", "==", req.user!.userId)
@@ -163,22 +164,25 @@ export async function savingsStatistics(req: AuthRequest, res: Response) {
         .get()
     ]);
 
-    const allIncomeTransactions = allIncomeSnapshot.docs.map(doc => docToObject(doc));
-    const allExpenseTransactions = allExpenseSnapshot.docs.map(doc => docToObject(doc));
+    // Filtrar por fecha y type en memoria (evita necesidad de índice compuesto)
+    const allTransactions = allTransactionsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => {
+        const txDate = tx.occurredAt?.toDate?.() || new Date(tx.occurredAt);
+        const txTime = txDate.getTime();
+        return txTime >= yearStartTime && txTime <= yearEndTime;
+      });
+    const allIncomeTransactions = allTransactions.filter((t: any) => t.type === "INCOME");
+    const allExpenseTransactions = allTransactions.filter((t: any) => t.type === "EXPENSE");
     const savingsAccountIds = savingsAccountsSnapshot.docs.map(doc => doc.id);
 
     // Obtener ahorros dirigidos del año completo
-    const allDirectedSavingsSnapshot = savingsAccountIds.length > 0
-      ? await db.collection("transactions")
-          .where("userId", "==", req.user!.userId)
-          .where("type", "==", "INCOME")
-          .where("accountId", "in", savingsAccountIds.slice(0, 10)) // Firestore limita a 10
-          .where("occurredAt", ">=", yearStartTimestamp)
-          .where("occurredAt", "<=", yearEndTimestamp)
-          .get()
-      : { docs: [] };
-
-    const allDirectedSavingsTransactions = allDirectedSavingsSnapshot.docs.map(doc => docToObject(doc));
+    // Filtrar en memoria para evitar índice compuesto
+    const allDirectedSavingsTransactions = savingsAccountIds.length > 0
+      ? allIncomeTransactions.filter((t: any) => 
+          savingsAccountIds.includes(t.accountId)
+        )
+      : [];
 
     // OPTIMIZACIÓN: Obtener rates una sola vez
     const uniqueCurrencies = [
@@ -290,18 +294,25 @@ export async function incomeStatistics(req: AuthRequest, res: Response) {
     const baseCurrency = userData.currencyCode || "UYU";
 
     // OPTIMIZACIÓN: Una query para todo el año en lugar de 12 queries por mes
-    const yearStartTimestamp = Timestamp.fromDate(monthAnchorUTC(currentYear, 1));
-    const yearEndTimestamp = Timestamp.fromDate(monthAnchorUTC(currentYear, 12));
+    const yearStart = monthAnchorUTC(currentYear, 1);
+    const yearEnd = monthAnchorUTC(currentYear, 12);
+    const yearStartTime = yearStart.getTime();
+    const yearEndTime = yearEnd.getTime();
 
-    // Obtener todas las transacciones de ingresos del año de una vez
-    const allIncomeSnapshot = await db.collection("transactions")
+    // Obtener todas las transacciones del usuario (sin filtrar por fecha para evitar índice compuesto)
+    // Evitar índice compuesto: consultar solo por userId, filtrar occurredAt y type en memoria
+    const allTransactionsSnapshot = await db.collection("transactions")
       .where("userId", "==", req.user!.userId)
-      .where("type", "==", "INCOME")
-      .where("occurredAt", ">=", yearStartTimestamp)
-      .where("occurredAt", "<=", yearEndTimestamp)
       .get();
 
-    const allIncomeTransactions = allIncomeSnapshot.docs.map(doc => docToObject(doc));
+    const allIncomeTransactions = allTransactionsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => {
+        if (tx.type !== "INCOME") return false;
+        const txDate = tx.occurredAt?.toDate?.() || new Date(tx.occurredAt);
+        const txTime = txDate.getTime();
+        return txTime >= yearStartTime && txTime <= yearEndTime;
+      });
 
     // OPTIMIZACIÓN: Obtener rates una sola vez
     const uniqueCurrencies = [...new Set(allIncomeTransactions.map((t: any) => t.currencyCode))].filter(c => c && c !== baseCurrency);
@@ -423,13 +434,20 @@ export async function fixedCosts(req: AuthRequest, res: Response) {
     }));
 
     // Identificar gastos que se repiten (mismo monto, misma categoría, cada mes)
-    const allExpensesSnapshot = await db.collection("transactions")
+    // Evitar índice compuesto: consultar solo por userId, filtrar occurredAt y type en memoria
+    const sixMonthsAgoTime = sixMonthsAgo.getTime();
+    const allTransactionsSnapshot = await db.collection("transactions")
       .where("userId", "==", req.user!.userId)
-      .where("type", "==", "EXPENSE")
-      .where("occurredAt", ">=", Timestamp.fromDate(sixMonthsAgo))
       .get();
 
-    const allExpenses = allExpensesSnapshot.docs.map(doc => docToObject(doc));
+    const allExpenses = allTransactionsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => {
+        if (tx.type !== "EXPENSE") return false;
+        const txDate = tx.occurredAt?.toDate?.() || new Date(tx.occurredAt);
+        const txTime = txDate.getTime();
+        return txTime >= sixMonthsAgoTime;
+      });
 
     // Agrupar por categoría y monto para encontrar patrones
     const expenseMap = new Map<string, any[]>();
@@ -487,15 +505,21 @@ export async function aiInsights(req: AuthRequest, res: Response) {
     const today = new Date();
     const threeMonthsAgo = new Date(today);
     threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const threeMonthsAgoTime = threeMonthsAgo.getTime();
 
-    // Obtener gastos
-    const expensesSnapshot = await db.collection("transactions")
+    // Evitar índice compuesto: consultar solo por userId, filtrar type y occurredAt en memoria
+    const allTransactionsSnapshot = await db.collection("transactions")
       .where("userId", "==", req.user!.userId)
-      .where("type", "==", "EXPENSE")
-      .where("occurredAt", ">=", Timestamp.fromDate(threeMonthsAgo))
       .get();
 
-    const expenses = expensesSnapshot.docs.map(doc => docToObject(doc));
+    // Filtrar gastos en memoria
+    const expenses = allTransactionsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => {
+        if (tx.type !== "EXPENSE") return false;
+        const txDate = tx.occurredAt?.toDate?.() || new Date(tx.occurredAt);
+        return txDate.getTime() >= threeMonthsAgoTime;
+      });
 
     // Cargar categorías
     const categoryIds = [...new Set(expenses.map((e: any) => e.categoryId).filter(Boolean))];
@@ -508,14 +532,14 @@ export async function aiInsights(req: AuthRequest, res: Response) {
       category: e.categoryId ? categoriesMap.get(e.categoryId) : null
     }));
 
-    // Obtener ingresos
-    const incomesSnapshot = await db.collection("transactions")
-      .where("userId", "==", req.user!.userId)
-      .where("type", "==", "INCOME")
-      .where("occurredAt", ">=", Timestamp.fromDate(threeMonthsAgo))
-      .get();
-
-    const incomes = incomesSnapshot.docs.map(doc => docToObject(doc));
+    // Filtrar ingresos en memoria
+    const incomes = allTransactionsSnapshot.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => {
+        if (tx.type !== "INCOME") return false;
+        const txDate = tx.occurredAt?.toDate?.() || new Date(tx.occurredAt);
+        return txDate.getTime() >= threeMonthsAgoTime;
+      });
 
     const totalExpenses = expensesWithCategories.reduce((sum, e: any) => sum + e.amountCents, 0);
     const totalIncome = incomes.reduce((sum, i: any) => sum + i.amountCents, 0);
