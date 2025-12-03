@@ -2,7 +2,7 @@ import { Response } from "express";
 import { db } from "../lib/firebase.js";
 import { AuthRequest } from "../server/middleware/auth.js";
 import { getBudgetSummaryForDate } from "../services/budget.service.js";
-import { docToObject, getDocumentsByIds } from "../lib/firestore-helpers.js";
+import { docToObject, getDocumentsByIds, fromFirestoreTimestamp } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
 
 export async function registerSubscription(req: AuthRequest, res: Response) {
@@ -91,17 +91,30 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
 
     recurringTransactions.forEach((tx: any) => {
       if (tx.nextOccurrence) {
-        const txDate = tx.nextOccurrence instanceof Date ? tx.nextOccurrence : new Date(tx.nextOccurrence);
-        const today = new Date(targetDate);
-        if (txDate.toDateString() === today.toDateString()) {
-          const category = tx.categoryId ? categoriesMap.get(tx.categoryId) : null;
-          notifications.push({
-            type: "RECURRING_TRANSACTION",
-            title: "Transacción Recurrente",
-            message: `Recordatorio: ${tx.description || "Transacción"} - ${category?.name || ""}`,
-            data: { transactionId: tx.id },
-            priority: "high"
-          });
+        try {
+          // Usar la función helper para convertir correctamente
+          const txDate = fromFirestoreTimestamp(tx.nextOccurrence) || 
+                        (tx.nextOccurrence instanceof Date ? tx.nextOccurrence : null) ||
+                        (typeof tx.nextOccurrence === 'string' || typeof tx.nextOccurrence === 'number' ? new Date(tx.nextOccurrence) : null);
+          
+          if (txDate && !isNaN(txDate.getTime())) {
+            const today = new Date(targetDate);
+            today.setHours(0, 0, 0, 0);
+            txDate.setHours(0, 0, 0, 0);
+            if (txDate.getTime() === today.getTime()) {
+              const category = tx.categoryId ? categoriesMap.get(tx.categoryId) : null;
+              notifications.push({
+                type: "RECURRING_TRANSACTION",
+                title: "Transacción Recurrente",
+                message: `Recordatorio: ${tx.description || "Transacción"} - ${category?.name || ""}`,
+                data: { transactionId: tx.id },
+                priority: "high"
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Error procesando transacción recurrente:", error, tx.id);
+          // Continuar con la siguiente transacción
         }
       }
     });
@@ -136,12 +149,23 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
     for (const budget of budgets) {
       // Filtrar transacciones en memoria para evitar índices compuestos
       const expenses = allTransactions.filter((tx: any) => {
-        const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
-        const txTime = txDate.getTime();
-        return tx.type === "EXPENSE" 
-          && tx.categoryId === budget.categoryId
-          && txTime >= monthStartTime 
-          && txTime <= monthEndTime;
+        try {
+          if (!tx.occurredAt) return false;
+          // Usar la función helper para convertir correctamente
+          const txDate = fromFirestoreTimestamp(tx.occurredAt) || 
+                        (tx.occurredAt instanceof Date ? tx.occurredAt : null) ||
+                        (typeof tx.occurredAt === 'string' || typeof tx.occurredAt === 'number' ? new Date(tx.occurredAt) : null);
+          
+          if (!txDate || isNaN(txDate.getTime())) return false;
+          const txTime = txDate.getTime();
+          return tx.type === "EXPENSE" 
+            && tx.categoryId === budget.categoryId
+            && txTime >= monthStartTime 
+            && txTime <= monthEndTime;
+        } catch (error) {
+          console.error("Error procesando transacción para presupuesto:", error, tx.id);
+          return false;
+        }
       });
 
       const spentCents = expenses.reduce((sum: number, tx: any) => {
@@ -225,7 +249,16 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
     res.json({ notifications });
   } catch (error: any) {
     console.error("Error getting notifications:", error);
-    res.status(500).json({ error: "Error al obtener notificaciones" });
+    console.error("Error stack:", error?.stack);
+    console.error("Error details:", {
+      message: error?.message,
+      code: error?.code,
+      userId: req.user?.userId
+    });
+    res.status(500).json({ 
+      error: "Error al obtener notificaciones",
+      details: process.env.NODE_ENV === "development" ? error?.message : undefined
+    });
   }
 }
 
