@@ -374,7 +374,8 @@ export async function deleteDebt(req: AuthRequest, res: Response) {
 
 export async function markDebtAsPaid(req: AuthRequest, res: Response) {
   try {
-    const { debtId, amountCents, accountId, occurredAt } = req.body;
+    const debtId = req.params.id; // Obtener de la URL
+    const { amountCents, accountId, occurredAt, currencyCode, exchangeRate, originalAmountCents, originalCurrencyCode } = req.body;
     
     // 1. Validar que la deuda existe y pertenece al usuario
     const debtDoc = await db.collection("debts").doc(debtId).get();
@@ -425,6 +426,7 @@ export async function markDebtAsPaid(req: AuthRequest, res: Response) {
     
     // 4. Validar cuenta (si no se proporciona, usar primera cuenta del usuario)
     let finalAccountId = accountId;
+    let finalAccountData: any = null;
     if (!finalAccountId) {
       const accountsSnapshot = await db.collection("accounts")
         .where("userId", "==", req.user!.userId)
@@ -434,34 +436,56 @@ export async function markDebtAsPaid(req: AuthRequest, res: Response) {
         return res.status(400).json({ error: "No hay cuentas disponibles" });
       }
       finalAccountId = accountsSnapshot.docs[0].id;
+      finalAccountData = accountsSnapshot.docs[0].data();
     } else {
       // Verificar que la cuenta existe y pertenece al usuario
       const accountDoc = await db.collection("accounts").doc(finalAccountId).get();
       if (!accountDoc.exists || accountDoc.data()!.userId !== req.user!.userId) {
         return res.status(400).json({ error: "Cuenta no válida" });
       }
+      finalAccountData = accountDoc.data()!;
     }
     
-    // 5. Usar batch write para atomicidad
+    // 5. Determinar moneda y monto final (con conversión si aplica)
+    const finalCurrencyCode = currencyCode || finalAccountData.currencyCode || debt.currencyCode;
+    const needsConversion = debt.currencyCode !== finalCurrencyCode;
+    
+    let finalAmountCents: number;
+    if (needsConversion && amountCents) {
+      // Si hay conversión, usar el monto ya convertido que viene del frontend
+      finalAmountCents = Math.round(Number(amountCents));
+    } else {
+      // Sin conversión, usar monto original de la deuda
+      finalAmountCents = amountCents ? Math.round(Number(amountCents)) : debt.monthlyPaymentCents;
+    }
+    
+    // 6. Usar batch write para atomicidad
     const batch = db.batch();
     
-    // 5a. Crear transacción
+    // 6a. Crear transacción
     const transactionRef = db.collection("transactions").doc();
-    const finalAmountCents = amountCents || debt.monthlyPaymentCents;
     const finalOccurredAt = occurredAt ? Timestamp.fromDate(new Date(occurredAt)) : Timestamp.now();
-    const transactionData = {
+    const transactionData: any = {
       userId: req.user!.userId,
       accountId: finalAccountId,
       categoryId: categoryId,
       type: "EXPENSE",
-      amountCents: Math.round(Number(finalAmountCents)),
-      currencyCode: debt.currencyCode,
+      amountCents: finalAmountCents,
+      currencyCode: finalCurrencyCode,
       occurredAt: finalOccurredAt,
       description: `Pago de cuota - ${debt.description}`,
       debtId: debtId,
       isDebtPayment: true,
       createdAt: Timestamp.now()
     };
+    
+    // Guardar información de conversión para auditoría
+    if (needsConversion && exchangeRate !== undefined) {
+      transactionData.exchangeRate = Number(exchangeRate);
+      transactionData.originalAmountCents = originalAmountCents ? Math.round(Number(originalAmountCents)) : debt.monthlyPaymentCents;
+      transactionData.originalCurrencyCode = originalCurrencyCode || debt.currencyCode;
+    }
+    
     batch.set(transactionRef, objectToFirestore(transactionData));
     
     // 5b. Actualizar deuda

@@ -23,6 +23,8 @@ import patternsRoutes from "../routes/patterns.routes.js";
 import searchRoutes from "../routes/search.routes.js";
 import notificationsRoutes from "../routes/notifications.routes.js";
 import exchangeRoutes from "../routes/exchange.routes.js";
+import plannedEventsRoutes from "../routes/planned-events.routes.js";
+import aiAnalysisRoutes from "../routes/ai-analysis.routes.js";
 import debtsRoutes from "../routes/debts.routes.js";
 import { openApiDoc } from "../swagger/openapi.js";
 
@@ -126,7 +128,9 @@ app.get("/", (_req, res) => res.json({
     search: "/search",
     notifications: "/notifications",
     exchange: "/exchange",
-    debts: "/debts"
+    debts: "/debts",
+    plannedEvents: "/planned-events",
+    aiAnalysis: "/ai-analysis"
   }
 }));
 
@@ -169,6 +173,8 @@ app.use("/search", searchRoutes);
 app.use("/notifications", notificationsRoutes);
 app.use("/exchange", exchangeRoutes);
 app.use("/debts", debtsRoutes);
+app.use("/planned-events", plannedEventsRoutes);
+app.use("/ai-analysis", aiAnalysisRoutes);
 
 // Sentry error handler (debe ir antes del error handler general)
 app.use(sentryErrorHandler());

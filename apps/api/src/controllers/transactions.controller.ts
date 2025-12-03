@@ -220,7 +220,7 @@ export async function createTransaction(req: AuthRequest, res: Response) {
       return res.status(400).json({ error: `Error de validación: ${errors}` });
     }
 
-    const { accountId, categoryId, type, amountCents, currencyCode, occurredAt, description, isRecurring, recurringRule, nextOccurrence } = parsed.data;
+    const { accountId, categoryId, type, amountCents, currencyCode, occurredAt, description, isRecurring, recurringRule, nextOccurrence, toAccountId } = parsed.data;
     const notificationSchedule = (req.body as any).notificationSchedule ? JSON.stringify((req.body as any).notificationSchedule) : null;
     const isPaid = (req.body as any).isPaid || false;
     const totalOccurrences = (req.body as any).totalOccurrences !== undefined ? (req.body as any).totalOccurrences : null;
@@ -231,34 +231,68 @@ export async function createTransaction(req: AuthRequest, res: Response) {
       return res.status(400).json({ error: "El importe debe ser mayor a 0" });
     }
 
-    // Verificar que la categoría existe y pertenece al usuario (OBLIGATORIO)
-    if (!categoryId) {
-      return res.status(400).json({ error: "La categoría es obligatoria" });
-    }
-    const categoryDoc = await db.collection("categories").doc(categoryId).get();
-    if (!categoryDoc.exists) {
-      return res.status(400).json({ error: "Categoría no válida" });
-    }
-    const categoryData = categoryDoc.data()!;
-    if (categoryData.userId !== req.user!.userId) {
-      return res.status(400).json({ error: "Categoría no válida" });
+    // Para transferencias, la categoría es opcional
+    let categoryData: any = null;
+    if (type === "TRANSFER") {
+      // Para transferencias, usar categoría opcional o crear una por defecto
+      if (categoryId) {
+        const categoryDoc = await db.collection("categories").doc(categoryId).get();
+        if (categoryDoc.exists) {
+          categoryData = categoryDoc.data()!;
+          if (categoryData.userId !== req.user!.userId) {
+            return res.status(400).json({ error: "Categoría no válida" });
+          }
+        }
+      }
+    } else {
+      // Para INCOME y EXPENSE, la categoría es obligatoria
+      if (!categoryId) {
+        return res.status(400).json({ error: "La categoría es obligatoria" });
+      }
+      const categoryDoc = await db.collection("categories").doc(categoryId).get();
+      if (!categoryDoc.exists) {
+        return res.status(400).json({ error: "Categoría no válida" });
+      }
+      categoryData = categoryDoc.data()!;
+      if (categoryData.userId !== req.user!.userId) {
+        return res.status(400).json({ error: "Categoría no válida" });
+      }
     }
 
-    // Verificar que la cuenta existe y pertenece al usuario
+    // Verificar que la cuenta origen existe y pertenece al usuario
     const accountDoc = await db.collection("accounts").doc(accountId).get();
     if (!accountDoc.exists) {
-      return res.status(400).json({ error: "Cuenta no válida" });
+      return res.status(400).json({ error: "Cuenta origen no válida" });
     }
     const accountData = accountDoc.data()!;
     if (accountData.userId !== req.user!.userId) {
-      return res.status(400).json({ error: "Cuenta no válida" });
+      return res.status(400).json({ error: "Cuenta origen no válida" });
     }
 
-    // Detectar si es cuenta de crédito y si viene información de cuotas
+    // Para transferencias, verificar cuenta destino
+    let toAccountData: any = null;
+    if (type === "TRANSFER") {
+      if (!toAccountId) {
+        return res.status(400).json({ error: "La cuenta destino es obligatoria para transferencias" });
+      }
+      if (toAccountId === accountId) {
+        return res.status(400).json({ error: "La cuenta origen y destino no pueden ser la misma" });
+      }
+      const toAccountDoc = await db.collection("accounts").doc(toAccountId).get();
+      if (!toAccountDoc.exists) {
+        return res.status(400).json({ error: "Cuenta destino no válida" });
+      }
+      toAccountData = toAccountDoc.data()!;
+      if (toAccountData.userId !== req.user!.userId) {
+        return res.status(400).json({ error: "Cuenta destino no válida" });
+      }
+    }
+
+    // Detectar si es cuenta de crédito y si viene información de cuotas (solo para EXPENSE, no TRANSFER)
     const installments = (req.body as any).installments;
     const totalAmountCents = (req.body as any).totalAmountCents;
     const isCreditAccount = accountData.type === "CREDIT";
-    let shouldCreateDebt = isCreditAccount && type === "EXPENSE" && installments && installments > 1 && totalAmountCents;
+    let shouldCreateDebt = type === "EXPENSE" && isCreditAccount && installments && installments > 1 && totalAmountCents;
 
     const transactionData = {
       userId: req.user!.userId,
@@ -357,16 +391,62 @@ export async function createTransaction(req: AuthRequest, res: Response) {
       }
     }
 
-    // Usar batch write para atomicidad: crear transacción, deuda (si aplica) y actualizar deuda existente (si aplica) en una sola operación
+    // Usar batch write para atomicidad: crear transacción(es), deuda (si aplica) y actualizar deuda existente (si aplica) en una sola operación
     const batch = db.batch();
-    const transactionRef = db.collection("transactions").doc();
+    let transactionRef: FirebaseFirestore.DocumentReference;
+    let fromTransactionRef: FirebaseFirestore.DocumentReference | null = null;
+    let toTransactionRef: FirebaseFirestore.DocumentReference | null = null;
     
-    // Actualizar transactionData con debtId si se crea deuda
-    if (shouldCreateDebt && newDebtId) {
-      (transactionData as any).debtId = newDebtId;
+    // Si es transferencia, crear dos transacciones atómicamente
+    if (type === "TRANSFER") {
+      // Transacción EXPENSE desde cuenta origen
+      fromTransactionRef = db.collection("transactions").doc();
+      const transferId = fromTransactionRef.id;
+      const fromTransactionData = {
+        userId: req.user!.userId,
+        accountId,
+        categoryId: categoryId || null,
+        type: "EXPENSE",
+        amountCents: Math.round(Number(amountCents)),
+        currencyCode: currencyCode || accountData.currencyCode,
+        occurredAt: Timestamp.fromDate(new Date(occurredAt)),
+        description: description || `Transferencia a ${toAccountData.name}`,
+        transferToAccountId: toAccountId,
+        transferId: transferId, // ID de la transacción origen para vincular
+        createdAt: Timestamp.now()
+      };
+      batch.set(fromTransactionRef, objectToFirestore(fromTransactionData));
+      
+      // Transacción INCOME a cuenta destino
+      toTransactionRef = db.collection("transactions").doc();
+      const toTransactionData = {
+        userId: req.user!.userId,
+        accountId: toAccountId,
+        categoryId: categoryId || null,
+        type: "INCOME",
+        amountCents: Math.round(Number(amountCents)),
+        currencyCode: currencyCode || toAccountData.currencyCode,
+        occurredAt: Timestamp.fromDate(new Date(occurredAt)),
+        description: description || `Transferencia desde ${accountData.name}`,
+        transferFromAccountId: accountId,
+        transferId: transferId, // Mismo ID para vincular ambas transacciones
+        createdAt: Timestamp.now()
+      };
+      batch.set(toTransactionRef, objectToFirestore(toTransactionData));
+      
+      // Usar la transacción origen como referencia principal
+      transactionRef = fromTransactionRef;
+    } else {
+      // Para INCOME y EXPENSE, crear una sola transacción
+      transactionRef = db.collection("transactions").doc();
+      
+      // Actualizar transactionData con debtId si se crea deuda
+      if (shouldCreateDebt && newDebtId) {
+        (transactionData as any).debtId = newDebtId;
+      }
+      
+      batch.set(transactionRef, objectToFirestore(transactionData));
     }
-    
-    batch.set(transactionRef, objectToFirestore(transactionData));
     
     // Si se debe crear una nueva deuda
     if (shouldCreateDebt && newDebtRef && newDebtId && debtDescription && monthlyPaymentCents && debtCategoryId) {
@@ -452,18 +532,56 @@ export async function createTransaction(req: AuthRequest, res: Response) {
     }
 
     // Cargar relaciones para la respuesta
-    const [category, account] = await Promise.all([
-      db.collection("categories").doc(categoryId).get(),
-      db.collection("accounts").doc(accountId).get()
-    ]);
+    if (type === "TRANSFER" && fromTransactionRef && toTransactionRef) {
+      // Para transferencias, cargar ambas transacciones y sus relaciones
+      const [fromTxDoc, toTxDoc, fromAccountDoc, toAccountDoc] = await Promise.all([
+        fromTransactionRef.get(),
+        toTransactionRef.get(),
+        db.collection("accounts").doc(accountId).get(),
+        db.collection("accounts").doc(toAccountId!).get()
+      ]);
+      
+      const fromTx = docToObject(fromTxDoc);
+      const toTx = docToObject(toTxDoc);
+      
+      let categoryDoc: FirebaseFirestore.DocumentSnapshot | null = null;
+      if (categoryId) {
+        categoryDoc = await db.collection("categories").doc(categoryId).get();
+      }
+      
+      const responseTx = {
+        ...fromTx,
+        category: categoryDoc && categoryDoc.exists ? docToObject(categoryDoc) : null,
+        account: fromAccountDoc.exists ? docToObject(fromAccountDoc) : null,
+        transferTo: {
+          ...toTx,
+          account: toAccountDoc.exists ? docToObject(toAccountDoc) : null
+        }
+      };
+      
+      return res.status(201).json({ transaction: responseTx });
+    } else {
+      // Para INCOME y EXPENSE, cargar relaciones normales
+      const promises: Promise<FirebaseFirestore.DocumentSnapshot>[] = [
+        db.collection("accounts").doc(accountId).get()
+      ];
+      
+      if (categoryId) {
+        promises.push(db.collection("categories").doc(categoryId).get());
+      }
+      
+      const results = await Promise.all(promises);
+      const account = results[0];
+      const category = categoryId ? results[1] : null;
 
-    const responseTx = {
-      ...tx,
-      category: category.exists ? docToObject(category) : null,
-      account: account.exists ? docToObject(account) : null
-    };
-
-    res.status(201).json({ transaction: responseTx });
+      const responseTx = {
+        ...tx,
+        category: category && category.exists ? docToObject(category) : null,
+        account: account.exists ? docToObject(account) : null
+      };
+      
+      return res.status(201).json({ transaction: responseTx });
+    }
   } catch (error: any) {
     console.error("Create transaction error:", error);
     res.status(500).json({ error: error.message || "Error al crear transacción" });

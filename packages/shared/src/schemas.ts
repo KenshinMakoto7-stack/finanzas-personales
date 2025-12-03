@@ -39,7 +39,7 @@ export const CategorySchema = z.object({
 
 export const TransactionSchema = z.object({
   accountId: z.string().min(1),
-  categoryId: z.string().min(1), // OBLIGATORIO
+  categoryId: z.string().min(1).optional(), // Opcional para TRANSFER
   type: z.enum(["INCOME","EXPENSE","TRANSFER"]),
   amountCents: z.number().int().positive(), // Solo positivos, redondeados
   currencyCode: z.string().min(3).max(3).default("USD"),
@@ -48,6 +48,7 @@ export const TransactionSchema = z.object({
     (val) => val === "" || val === undefined || val === null ? null : val,
     z.string().nullable().optional()
   ),
+  toAccountId: z.string().min(1).optional(), // Para TRANSFER: cuenta destino
   isRecurring: z.boolean().optional().default(false),
   recurringRule: z.preprocess(
     (val) => val === "" || val === undefined || val === null ? null : val,
