@@ -230,6 +230,34 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
 }
 
 export async function markAsRead(req: AuthRequest, res: Response) {
-  // En una implementación real, guardarías esto en la base de datos
-  res.json({ success: true });
+  try {
+    const { notificationId } = req.body;
+    // Por ahora, solo retornamos éxito ya que las notificaciones se generan dinámicamente
+    // En el futuro, podríamos guardar el estado en Firestore
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Error marking notification as read:", error);
+    res.status(500).json({ error: "Error al marcar notificación como leída" });
+  }
+}
+
+export async function deleteNotification(req: AuthRequest, res: Response) {
+  try {
+    // Las notificaciones se generan dinámicamente, así que solo retornamos éxito
+    // En el futuro, podríamos guardar notificaciones persistentes en Firestore
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Error deleting notification:", error);
+    res.status(500).json({ error: "Error al eliminar notificación" });
+  }
+}
+
+export async function deleteAllNotifications(req: AuthRequest, res: Response) {
+  try {
+    // Las notificaciones se generan dinámicamente, así que solo retornamos éxito
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Error deleting all notifications:", error);
+    res.status(500).json({ error: "Error al eliminar todas las notificaciones" });
+  }
 }

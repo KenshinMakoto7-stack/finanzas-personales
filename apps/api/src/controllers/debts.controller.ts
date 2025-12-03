@@ -512,22 +512,35 @@ export async function getDebtStatistics(req: AuthRequest, res: Response) {
     let totalAmountCompleted = 0;
     let fastestDebt: { months: number; description: string } | null = null;
     let slowestDebt: { months: number; description: string } | null = null;
+    
+    // Para duración total promedio (promedio de totalInstallments de todas las deudas)
+    let totalInstallmentsSum = 0;
+    let totalDebtsCount = 0;
 
     debts.forEach((debt: any) => {
       const remainingInstallments = debt.totalInstallments - debt.paidInstallments;
       const isCompleted = debt.paidInstallments >= debt.totalInstallments;
       
+      // Acumular para duración total promedio (todas las deudas)
+      totalInstallmentsSum += debt.totalInstallments;
+      totalDebtsCount++;
+      
       if (!isCompleted && remainingInstallments > 0) {
         activeDebts++;
         totalMonthlyPayment += debt.monthlyPaymentCents;
         
-        // Calcular cuándo termina esta deuda
+        // Calcular cuándo termina esta deuda usando UTC correctamente
         const startDate = debt.startMonth instanceof Date ? debt.startMonth : new Date(debt.startMonth);
-        const endMonth = new Date(startDate);
-        endMonth.setMonth(endMonth.getMonth() + debt.totalInstallments - 1);
+        const startYear = startDate.getUTCFullYear();
+        const startMonthNum = startDate.getUTCMonth(); // 0-11
         
-        if (latestEndDate === null || endMonth > latestEndDate) {
-          latestEndDate = endMonth;
+        // Calcular fecha de fin usando UTC (igual que en calculateDebtInfo del frontend)
+        const endYear = startYear + Math.floor((startMonthNum + debt.totalInstallments - 1) / 12);
+        const endMonth = (startMonthNum + debt.totalInstallments - 1) % 12;
+        const endDate = new Date(Date.UTC(endYear, endMonth, 1));
+        
+        if (latestEndDate === null || endDate > latestEndDate) {
+          latestEndDate = endDate;
         }
         
         // Calcular meses restantes desde hoy
@@ -569,6 +582,7 @@ export async function getDebtStatistics(req: AuthRequest, res: Response) {
     });
 
     const averageDuration = activeDebts > 0 ? totalRemainingMonths / activeDebts : 0;
+    const averageTotalDuration = totalDebtsCount > 0 ? totalInstallmentsSum / totalDebtsCount : 0; // Promedio de totalInstallments de todas las deudas
     const averageTimeToComplete = totalTimeToComplete.length > 0
       ? totalTimeToComplete.reduce((a, b) => a + b, 0) / totalTimeToComplete.length
       : 0;
@@ -601,6 +615,7 @@ export async function getDebtStatistics(req: AuthRequest, res: Response) {
       // Estadísticas existentes
       totalMonthlyPayment,
       averageDuration: Math.round(averageDuration * 10) / 10,
+      averageTotalDuration: Math.round(averageTotalDuration * 10) / 10, // Duración total promedio (promedio de totalInstallments)
       activeDebts,
       latestEndDate: latestEndDateISO,
       totalDebts: debts.length,

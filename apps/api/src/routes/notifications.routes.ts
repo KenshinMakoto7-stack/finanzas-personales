@@ -9,6 +9,8 @@ router.use(requireAuth);
 router.post("/subscribe", notificationsController.registerSubscription);
 router.get("/pending", notificationsController.getPendingNotifications);
 router.post("/read", notificationsController.markAsRead);
+router.delete("/:id", notificationsController.deleteNotification);
+router.delete("/", notificationsController.deleteAllNotifications);
 
 export default router;
 
