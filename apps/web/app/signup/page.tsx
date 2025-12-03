@@ -60,9 +60,10 @@ export default function SignupPage() {
       padding: "20px"
     }}>
       <div style={{
-        background: "white",
+        background: "var(--color-bg-white, #FFFFFF)",
         borderRadius: "20px",
-        boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+        boxShadow: "var(--shadow-xl, 0 20px 25px -5px rgba(0, 0, 0, 0.1))",
+        border: "1px solid var(--color-border-light, #F3F4F6)",
         padding: "40px",
         maxWidth: "420px",
         width: "100%"
@@ -71,14 +72,13 @@ export default function SignupPage() {
           <h1 style={{ 
             fontSize: "32px", 
             fontWeight: "700", 
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            marginBottom: "8px"
+            color: "var(--color-primary, #4F46E5)",
+            marginBottom: "8px",
+            fontFamily: "'Inter', sans-serif"
           }}>
             Crear Cuenta
           </h1>
-          <p style={{ color: "#666", fontSize: "16px" }}>Comienza a gestionar tus finanzas</p>
+          <p style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "16px" }}>Comienza a gestionar tus finanzas</p>
         </div>
 
         <Form form={form} onSubmit={onSubmit}>

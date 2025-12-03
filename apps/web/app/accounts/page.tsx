@@ -80,7 +80,7 @@ export default function AccountsPage() {
   return (
     <div style={{
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      background: "var(--color-bg-primary, #FAFBFC)",
       padding: "20px"
     }}>
       <div style={{ maxWidth: "800px", margin: "0 auto" }}>
@@ -105,7 +105,7 @@ export default function AccountsPage() {
               <h1 style={{
                 fontSize: "32px",
                 fontWeight: "700",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: "var(--color-bg-primary, #FAFBFC)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
                 marginTop: "8px"
@@ -117,7 +117,7 @@ export default function AccountsPage() {
               onClick={() => setShowCreate(true)}
               style={{
                 padding: "12px 24px",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: "var(--color-bg-primary, #FAFBFC)",
                 color: "white",
                 border: "none",
                 borderRadius: "10px",
@@ -200,7 +200,7 @@ export default function AccountsPage() {
                     type="submit"
                     style={{
                       padding: "12px 24px",
-                      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                      background: "var(--color-bg-primary, #FAFBFC)",
                       color: "white",
                       border: "none",
                       borderRadius: "8px",
@@ -244,7 +244,7 @@ export default function AccountsPage() {
                 onClick={() => setShowCreate(true)}
                 style={{
                   padding: "12px 24px",
-                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  background: "var(--color-bg-primary, #FAFBFC)",
                   color: "white",
                   border: "none",
                   borderRadius: "8px",
@@ -283,7 +283,7 @@ export default function AccountsPage() {
                     onClick={() => handleDelete(account.id)}
                     style={{
                       padding: "8px 16px",
-                      background: "#e74c3c",
+                      background: "var(--color-expense, #B45309)",
                       color: "white",
                       border: "none",
                       borderRadius: "6px",

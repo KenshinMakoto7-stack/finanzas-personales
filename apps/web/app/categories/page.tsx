@@ -220,7 +220,7 @@ export default function CategoriesPage() {
   return (
     <div style={{
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      background: "var(--color-bg-primary, #FAFBFC)",
       padding: "20px"
     }}>
       <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
@@ -245,7 +245,7 @@ export default function CategoriesPage() {
               <h1 style={{
                 fontSize: "32px",
                 fontWeight: "700",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: "var(--color-bg-primary, #FAFBFC)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
                 marginTop: "8px"
@@ -261,7 +261,7 @@ export default function CategoriesPage() {
               }}
               style={{
                 padding: "12px 24px",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: "var(--color-bg-primary, #FAFBFC)",
                 color: "white",
                 border: "none",
                 borderRadius: "10px",
@@ -405,7 +405,7 @@ export default function CategoriesPage() {
                     type="submit"
                     style={{
                       padding: "12px 24px",
-                      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                      background: "var(--color-bg-primary, #FAFBFC)",
                       color: "white",
                       border: "none",
                       borderRadius: "8px",

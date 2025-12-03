@@ -5,6 +5,34 @@ import { AuthRequest } from "../server/middleware/auth.js";
 import { objectToFirestore, docToObject, textSearch, getDocumentsByIds, chunkArray } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
 
+// Función auxiliar para obtener o crear la categoría "Deudas"
+async function getOrCreateDebtsCategory(userId: string) {
+  const debtsSnapshot = await db.collection("categories")
+    .where("userId", "==", userId)
+    .where("name", "==", "Deudas")
+    .where("type", "==", "EXPENSE")
+    .where("parentId", "==", null)
+    .limit(1)
+    .get();
+
+  if (!debtsSnapshot.empty) {
+    return debtsSnapshot.docs[0];
+  }
+
+  const categoryData = {
+    userId,
+    name: "Deudas",
+    type: "EXPENSE",
+    parentId: null,
+    icon: "💳",
+    color: "#e74c3c",
+    createdAt: Timestamp.now()
+  };
+
+  const docRef = await db.collection("categories").add(objectToFirestore(categoryData));
+  return await docRef.get();
+}
+
 // Constantes de seguridad
 const MAX_PAGE_SIZE = 100;
 const DEFAULT_PAGE_SIZE = 50;
@@ -226,6 +254,12 @@ export async function createTransaction(req: AuthRequest, res: Response) {
       return res.status(400).json({ error: "Cuenta no válida" });
     }
 
+    // Detectar si es cuenta de crédito y si viene información de cuotas
+    const installments = (req.body as any).installments;
+    const totalAmountCents = (req.body as any).totalAmountCents;
+    const isCreditAccount = accountData.type === "CREDIT";
+    let shouldCreateDebt = isCreditAccount && type === "EXPENSE" && installments && installments > 1 && totalAmountCents;
+
     const transactionData = {
       userId: req.user!.userId,
       accountId,
@@ -242,6 +276,8 @@ export async function createTransaction(req: AuthRequest, res: Response) {
       isPaid: isRecurring ? isPaid : false,
       totalOccurrences: isRecurring ? totalOccurrences : null,
       remainingOccurrences: isRecurring ? remainingOccurrences : null,
+      installments: shouldCreateDebt ? installments : undefined,
+      totalAmountCents: shouldCreateDebt ? Math.round(Number(totalAmountCents)) : undefined,
       createdAt: Timestamp.now()
     };
 
@@ -277,11 +313,128 @@ export async function createTransaction(req: AuthRequest, res: Response) {
       }
     }
 
-    // Usar batch write para atomicidad: crear transacción y actualizar deuda en una sola operación
+    // Si es cuenta CREDIT con cuotas, preparar creación de deuda automática
+    let newDebtRef: FirebaseFirestore.DocumentReference | null = null;
+    let newDebtId: string | null = null;
+    let debtCategoryId: string | null = null;
+    let debtDescription: string | null = null;
+    let monthlyPaymentCents: number | null = null;
+    let subcategoryRef: FirebaseFirestore.DocumentReference | null = null;
+    
+    if (shouldCreateDebt) {
+      try {
+        // Obtener o crear categoría "Deudas"
+        const debtsCategoryDoc = await getOrCreateDebtsCategory(req.user!.userId);
+        debtCategoryId = debtsCategoryDoc.id;
+        
+        // Preparar descripción de la deuda
+        debtDescription = description || `Gasto en ${accountData.name}`;
+        
+        // Verificar si ya existe una subcategoría con este nombre
+        const subcategorySnapshot = await db.collection("categories")
+          .where("userId", "==", req.user!.userId)
+          .where("name", "==", debtDescription)
+          .where("type", "==", "EXPENSE")
+          .where("parentId", "==", debtCategoryId)
+          .limit(1)
+          .get();
+        
+        // Calcular cuota mensual
+        monthlyPaymentCents = Math.round(Number(totalAmountCents) / installments);
+        
+        // Preparar referencia de deuda
+        newDebtRef = db.collection("debts").doc();
+        newDebtId = newDebtRef.id;
+        
+        // Si no existe la subcategoría, preparar su creación
+        if (subcategorySnapshot.empty) {
+          subcategoryRef = db.collection("categories").doc();
+        }
+      } catch (error: any) {
+        console.error("Error al preparar deuda automática:", error);
+        // Continuar sin crear deuda si hay error
+        shouldCreateDebt = false;
+      }
+    }
+
+    // Usar batch write para atomicidad: crear transacción, deuda (si aplica) y actualizar deuda existente (si aplica) en una sola operación
     const batch = db.batch();
     const transactionRef = db.collection("transactions").doc();
     
+    // Actualizar transactionData con debtId si se crea deuda
+    if (shouldCreateDebt && newDebtId) {
+      (transactionData as any).debtId = newDebtId;
+    }
+    
     batch.set(transactionRef, objectToFirestore(transactionData));
+    
+    // Si se debe crear una nueva deuda
+    if (shouldCreateDebt && newDebtRef && newDebtId && debtDescription && monthlyPaymentCents && debtCategoryId) {
+      // Preparar datos de la deuda
+      const monthStart = new Date(occurredAt);
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      
+      const debtData = {
+        userId: req.user!.userId,
+        description: debtDescription,
+        totalAmountCents: Math.round(Number(totalAmountCents)),
+        monthlyPaymentCents: monthlyPaymentCents,
+        totalInstallments: Number(installments),
+        paidInstallments: 0,
+        startMonth: Timestamp.fromDate(monthStart),
+        currencyCode: currencyCode || accountData.currencyCode,
+        debtType: "CREDIT",
+        accountId: accountId,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      };
+      
+      batch.set(newDebtRef, objectToFirestore(debtData));
+      
+      // Crear subcategoría si no existe
+      if (subcategoryRef) {
+        const subcategoryData = {
+          userId: req.user!.userId,
+          name: debtDescription,
+          type: "EXPENSE",
+          parentId: debtCategoryId,
+          icon: "💳",
+          color: "#c0392b",
+          createdAt: Timestamp.now()
+        };
+        batch.set(subcategoryRef, objectToFirestore(subcategoryData));
+      }
+      
+      // Crear transacciones recurrentes mensuales para cada cuota
+      const baseDate = new Date(occurredAt);
+      for (let i = 0; i < installments; i++) {
+        const occurrenceDate = new Date(baseDate);
+        occurrenceDate.setMonth(occurrenceDate.getMonth() + i);
+        
+        const recurringTransactionRef = db.collection("transactions").doc();
+        const recurringCategoryId = subcategoryRef ? subcategoryRef.id : categoryId;
+        const recurringTransactionData = {
+          userId: req.user!.userId,
+          accountId: accountId,
+          categoryId: recurringCategoryId,
+          type: "EXPENSE",
+          amountCents: monthlyPaymentCents,
+          currencyCode: currencyCode || accountData.currencyCode,
+          occurredAt: Timestamp.fromDate(occurrenceDate),
+          description: `${debtDescription} - Cuota ${i + 1}/${installments}`,
+          isRecurring: true,
+          recurringRule: JSON.stringify({ type: "monthly" }),
+          nextOccurrence: i < installments - 1 ? Timestamp.fromDate(new Date(occurrenceDate.getTime() + 30 * 24 * 60 * 60 * 1000)) : null,
+          isPaid: false,
+          totalOccurrences: installments,
+          remainingOccurrences: installments - i - 1,
+          debtId: newDebtId,
+          createdAt: Timestamp.now()
+        };
+        batch.set(recurringTransactionRef, objectToFirestore(recurringTransactionData));
+      }
+    }
     
     if (debtRef && newPaidInstallments !== null) {
       batch.update(debtRef, {

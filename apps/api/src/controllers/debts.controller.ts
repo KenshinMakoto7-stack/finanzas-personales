@@ -36,13 +36,23 @@ async function getOrCreateDebtsCategory(userId: string) {
 
 export async function listDebts(req: AuthRequest, res: Response) {
   try {
+    const { type } = req.query as any; // "CREDIT" | "OTHER" | undefined
+    
     const snapshot = await db.collection("debts")
       .where("userId", "==", req.user!.userId)
       .get();
 
-    // Ordenar en memoria para evitar índice compuesto
-    const debts = snapshot.docs
+    // Filtrar y ordenar en memoria para evitar índice compuesto
+    let debts = snapshot.docs
       .map(doc => docToObject(doc))
+      .filter((debt: any) => {
+        // Si se especifica un tipo, filtrar por él
+        if (type && type !== "ALL") {
+          const debtType = debt.debtType || "OTHER"; // Por defecto "OTHER" si no tiene tipo
+          return debtType === type;
+        }
+        return true; // Si no se especifica tipo, mostrar todas
+      })
       .sort((a: any, b: any) => {
         const dateA = a.startMonth ? new Date(a.startMonth).getTime() : 0;
         const dateB = b.startMonth ? new Date(b.startMonth).getTime() : 0;
@@ -134,6 +144,8 @@ export async function createDebt(req: AuthRequest, res: Response) {
         paidInstallments: Number(paidInstallments) || 0,
         startMonth: Timestamp.fromDate(monthStart),
         currencyCode: currencyCode || "USD",
+        debtType: (req.body as any).debtType || "OTHER", // Por defecto "OTHER" si no se especifica
+        accountId: (req.body as any).accountId || null,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       };
@@ -360,6 +372,123 @@ export async function deleteDebt(req: AuthRequest, res: Response) {
   }
 }
 
+export async function markDebtAsPaid(req: AuthRequest, res: Response) {
+  try {
+    const { debtId, amountCents, accountId, occurredAt } = req.body;
+    
+    // 1. Validar que la deuda existe y pertenece al usuario
+    const debtDoc = await db.collection("debts").doc(debtId).get();
+    if (!debtDoc.exists) {
+      return res.status(404).json({ error: "Deuda no encontrada" });
+    }
+    
+    const debt = docToObject(debtDoc);
+    if (debt.userId !== req.user!.userId) {
+      return res.status(403).json({ error: "No autorizado" });
+    }
+    
+    // 2. Validar que no esté completamente pagada
+    if (debt.paidInstallments >= debt.totalInstallments) {
+      return res.status(400).json({ error: "La deuda ya está completamente pagada" });
+    }
+    
+    // 3. Obtener la categoría de la deuda (subcategoría de "Deudas")
+    const debtsCategoryDoc = await getOrCreateDebtsCategory(req.user!.userId);
+    const debtsCategoryId = debtsCategoryDoc.id;
+    
+    const subcategorySnapshot = await db.collection("categories")
+      .where("userId", "==", req.user!.userId)
+      .where("name", "==", debt.description)
+      .where("type", "==", "EXPENSE")
+      .where("parentId", "==", debtsCategoryId)
+      .limit(1)
+      .get();
+    
+    let categoryId: string;
+    if (subcategorySnapshot.empty) {
+      // Crear la subcategoría si no existe
+      const subcategoryRef = db.collection("categories").doc();
+      const subcategoryData = {
+        userId: req.user!.userId,
+        name: debt.description,
+        type: "EXPENSE",
+        parentId: debtsCategoryId,
+        icon: "📋",
+        color: "#c0392b",
+        createdAt: Timestamp.now()
+      };
+      await db.collection("categories").doc(subcategoryRef.id).set(objectToFirestore(subcategoryData));
+      categoryId = subcategoryRef.id;
+    } else {
+      categoryId = subcategorySnapshot.docs[0].id;
+    }
+    
+    // 4. Validar cuenta (si no se proporciona, usar primera cuenta del usuario)
+    let finalAccountId = accountId;
+    if (!finalAccountId) {
+      const accountsSnapshot = await db.collection("accounts")
+        .where("userId", "==", req.user!.userId)
+        .limit(1)
+        .get();
+      if (accountsSnapshot.empty) {
+        return res.status(400).json({ error: "No hay cuentas disponibles" });
+      }
+      finalAccountId = accountsSnapshot.docs[0].id;
+    } else {
+      // Verificar que la cuenta existe y pertenece al usuario
+      const accountDoc = await db.collection("accounts").doc(finalAccountId).get();
+      if (!accountDoc.exists || accountDoc.data()!.userId !== req.user!.userId) {
+        return res.status(400).json({ error: "Cuenta no válida" });
+      }
+    }
+    
+    // 5. Usar batch write para atomicidad
+    const batch = db.batch();
+    
+    // 5a. Crear transacción
+    const transactionRef = db.collection("transactions").doc();
+    const finalAmountCents = amountCents || debt.monthlyPaymentCents;
+    const finalOccurredAt = occurredAt ? Timestamp.fromDate(new Date(occurredAt)) : Timestamp.now();
+    const transactionData = {
+      userId: req.user!.userId,
+      accountId: finalAccountId,
+      categoryId: categoryId,
+      type: "EXPENSE",
+      amountCents: Math.round(Number(finalAmountCents)),
+      currencyCode: debt.currencyCode,
+      occurredAt: finalOccurredAt,
+      description: `Pago de cuota - ${debt.description}`,
+      debtId: debtId,
+      isDebtPayment: true,
+      createdAt: Timestamp.now()
+    };
+    batch.set(transactionRef, objectToFirestore(transactionData));
+    
+    // 5b. Actualizar deuda
+    const debtRef = db.collection("debts").doc(debtId);
+    batch.update(debtRef, {
+      paidInstallments: debt.paidInstallments + 1,
+      updatedAt: Timestamp.now()
+    });
+    
+    // 6. Commit atómico
+    await batch.commit();
+    
+    // 7. Obtener datos actualizados
+    const updatedDebt = docToObject(await debtRef.get());
+    const createdTransaction = docToObject(await transactionRef.get());
+    
+    res.json({ 
+      debt: updatedDebt, 
+      transaction: createdTransaction,
+      message: "Pago registrado exitosamente"
+    });
+  } catch (error: any) {
+    console.error("Error marking debt as paid:", error);
+    res.status(500).json({ error: error.message || "Error al registrar el pago" });
+  }
+}
+
 export async function getDebtStatistics(req: AuthRequest, res: Response) {
   try {
     const snapshot = await db.collection("debts")
@@ -375,6 +504,14 @@ export async function getDebtStatistics(req: AuthRequest, res: Response) {
     let totalRemainingMonths = 0;
     let activeDebts = 0;
     let latestEndDate: Date | null = null;
+    
+    // Estadísticas de comportamiento
+    let completedDebts = 0;
+    let totalPaidInCompleted = 0;
+    let totalTimeToComplete: number[] = [];
+    let totalAmountCompleted = 0;
+    let fastestDebt: { months: number; description: string } | null = null;
+    let slowestDebt: { months: number; description: string } | null = null;
 
     debts.forEach((debt: any) => {
       const remainingInstallments = debt.totalInstallments - debt.paidInstallments;
@@ -400,21 +537,82 @@ export async function getDebtStatistics(req: AuthRequest, res: Response) {
         );
         const monthsRemaining = Math.max(0, remainingInstallments - (monthsFromStart - debt.paidInstallments));
         totalRemainingMonths += monthsRemaining;
+      } else if (isCompleted) {
+        // Estadísticas de deudas completadas
+        completedDebts++;
+        totalAmountCompleted += debt.totalAmountCents;
+        totalPaidInCompleted += debt.totalAmountCents;
+        
+        // Calcular tiempo que tomó completar
+        const startDate = debt.startMonth instanceof Date ? debt.startMonth : new Date(debt.startMonth);
+        const startYear = startDate.getUTCFullYear();
+        const startMonthNum = startDate.getUTCMonth();
+        
+        // Calcular fecha de finalización (última cuota)
+        const endYear = startYear + Math.floor((startMonthNum + debt.totalInstallments - 1) / 12);
+        const endMonth = (startMonthNum + debt.totalInstallments - 1) % 12;
+        const endDate = new Date(Date.UTC(endYear, endMonth, 1));
+        
+        const monthsToComplete = Math.max(1, 
+          (endYear - startYear) * 12 + (endMonth - startMonthNum) + 1
+        );
+        totalTimeToComplete.push(monthsToComplete);
+        
+        // Rastrear deuda más rápida y más lenta
+        if (fastestDebt === null || monthsToComplete < fastestDebt.months) {
+          fastestDebt = { months: monthsToComplete, description: debt.description };
+        }
+        if (slowestDebt === null || monthsToComplete > slowestDebt.months) {
+          slowestDebt = { months: monthsToComplete, description: debt.description };
+        }
       }
     });
 
     const averageDuration = activeDebts > 0 ? totalRemainingMonths / activeDebts : 0;
+    const averageTimeToComplete = totalTimeToComplete.length > 0
+      ? totalTimeToComplete.reduce((a, b) => a + b, 0) / totalTimeToComplete.length
+      : 0;
+    const completionRate = debts.length > 0
+      ? (completedDebts / debts.length) * 100
+      : 0;
+    
+    // Calcular rango de cuotas más común en deudas completadas
+    const installmentsCounts = new Map<number, number>();
+    debts.forEach((debt: any) => {
+      if (debt.paidInstallments >= debt.totalInstallments) {
+        const count = installmentsCounts.get(debt.totalInstallments) || 0;
+        installmentsCounts.set(debt.totalInstallments, count + 1);
+      }
+    });
+    let mostCommonInstallments = 0;
+    let maxCount = 0;
+    installmentsCounts.forEach((count, installments) => {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommonInstallments = installments;
+      }
+    });
 
     const latestEndDateISO: string | null = (latestEndDate !== null) 
       ? (latestEndDate as Date).toISOString() 
       : null;
 
     res.json({
+      // Estadísticas existentes
       totalMonthlyPayment,
       averageDuration: Math.round(averageDuration * 10) / 10,
       activeDebts,
       latestEndDate: latestEndDateISO,
-      totalDebts: debts.length
+      totalDebts: debts.length,
+      
+      // Nuevas estadísticas de comportamiento
+      completedDebts,
+      totalAmountCompleted,
+      averageTimeToComplete: Math.round(averageTimeToComplete * 10) / 10,
+      completionRate: Math.round(completionRate * 10) / 10,
+      mostCommonInstallments,
+      fastestDebt,
+      slowestDebt
     });
   } catch (error: any) {
     console.error("Error getting debt statistics:", error);

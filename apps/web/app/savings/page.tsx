@@ -85,7 +85,7 @@ export default function SavingsPage() {
         display: "flex", 
         alignItems: "center", 
         justifyContent: "center",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+        background: "var(--color-bg-primary, #FAFBFC)"
       }}>
         <div style={{
           background: "white",
@@ -113,7 +113,7 @@ export default function SavingsPage() {
   return (
     <div style={{ 
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      background: "var(--color-primary, #4F46E5)",
       padding: "20px"
     }}>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -134,7 +134,7 @@ export default function SavingsPage() {
             <h1 style={{
               fontSize: "28px",
               fontWeight: "700",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              background: "var(--color-bg-primary, #FAFBFC)",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               marginBottom: "4px"
@@ -176,7 +176,7 @@ export default function SavingsPage() {
             <Link href="/accounts">
               <button style={{
                 padding: "10px 20px",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: "var(--color-bg-primary, #FAFBFC)",
                 color: "white",
                 border: "none",
                 borderRadius: "8px",
@@ -545,7 +545,7 @@ export default function SavingsPage() {
               <button style={{
                 marginTop: "16px",
                 padding: "12px 24px",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: "var(--color-bg-primary, #FAFBFC)",
                 color: "white",
                 border: "none",
                 borderRadius: "8px",

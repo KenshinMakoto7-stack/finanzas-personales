@@ -76,7 +76,7 @@ function ResetPasswordContent() {
         alignItems: "center", 
         justifyContent: "center",
         padding: "20px",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+        background: "var(--color-bg-primary, #FAFBFC)"
       }}>
         <div style={{
           background: "white",
@@ -103,7 +103,7 @@ function ResetPasswordContent() {
         alignItems: "center", 
         justifyContent: "center",
         padding: "20px",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+        background: "var(--color-bg-primary, #FAFBFC)"
       }}>
         <div style={{
           background: "white",
@@ -128,7 +128,7 @@ function ResetPasswordContent() {
               style={{
                 width: "100%",
                 padding: "14px",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: "var(--color-bg-primary, #FAFBFC)",
                 color: "white",
                 border: "none",
                 borderRadius: "10px",
@@ -152,7 +152,7 @@ function ResetPasswordContent() {
       alignItems: "center", 
       justifyContent: "center",
       padding: "20px",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+      background: "var(--color-bg-primary, #FAFBFC)"
     }}>
       <div style={{
         background: "white",
@@ -166,7 +166,7 @@ function ResetPasswordContent() {
           <h1 style={{ 
             fontSize: "32px", 
             fontWeight: "700", 
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            background: "var(--color-bg-primary, #FAFBFC)",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
             marginBottom: "8px"
@@ -275,7 +275,7 @@ function ResetPasswordContent() {
               style={{
                 width: "100%",
                 padding: "14px",
-                background: loading ? "#ccc" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: loading ? "var(--color-border, #E5E7EB)" : "var(--color-primary, #4F46E5)",
                 color: "white",
                 border: "none",
                 borderRadius: "10px",

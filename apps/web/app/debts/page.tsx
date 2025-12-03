@@ -29,6 +29,13 @@ export default function DebtsPage() {
   const [error, setError] = useState<string>();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingDebt, setEditingDebt] = useState<string | null>(null);
+  const [debtTypeFilter, setDebtTypeFilter] = useState<"ALL" | "CREDIT" | "OTHER">("ALL");
+  const [debtStatusFilter, setDebtStatusFilter] = useState<"ALL" | "ACTIVE" | "COMPLETED">("ALL");
+  const [showMarkPaidModal, setShowMarkPaidModal] = useState(false);
+  const [selectedDebt, setSelectedDebt] = useState<any>(null);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentAccountId, setPaymentAccountId] = useState("");
+  const [accounts, setAccounts] = useState<any[]>([]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -60,12 +67,14 @@ export default function DebtsPage() {
     setLoading(true);
     setError(undefined);
     try {
-      const [debtsRes, statsRes] = await Promise.all([
-        api.get("/debts"),
-        api.get("/debts/statistics")
+      const [debtsRes, statsRes, accountsRes] = await Promise.all([
+        api.get(`/debts${debtTypeFilter !== "ALL" ? `?type=${debtTypeFilter}` : ""}`),
+        api.get("/debts/statistics"),
+        api.get("/accounts")
       ]);
       setDebts(debtsRes.data.debts || []);
       setStatistics(statsRes.data);
+      setAccounts(accountsRes.data.accounts || []);
     } catch (err: any) {
       setError(err?.response?.data?.error ?? "Error al cargar deudas");
       if (err?.response?.status === 401) {
@@ -75,6 +84,41 @@ export default function DebtsPage() {
       setLoading(false);
     }
   }
+  
+  const handleMarkAsPaid = (debt: any) => {
+    setSelectedDebt(debt);
+    setPaymentAmount((debt.monthlyPaymentCents / 100).toFixed(2));
+    setPaymentAccountId(accounts.length > 0 ? accounts[0].id : "");
+    setShowMarkPaidModal(true);
+  };
+  
+  const confirmMarkAsPaid = async () => {
+    if (!selectedDebt) return;
+    
+    try {
+      const amountCents = Math.round(Number(paymentAmount) * 100);
+      
+      await api.post(`/debts/${selectedDebt.id}/mark-paid`, {
+        amountCents,
+        accountId: paymentAccountId || undefined,
+        occurredAt: new Date().toISOString()
+      });
+      
+      setShowMarkPaidModal(false);
+      setSelectedDebt(null);
+      setPaymentAmount("");
+      setPaymentAccountId("");
+      loadData();
+    } catch (err: any) {
+      setError(err?.response?.data?.error || "Error al registrar el pago");
+    }
+  };
+  
+  useEffect(() => {
+    if (user && token) {
+      loadData();
+    }
+  }, [debtTypeFilter, debtStatusFilter, user, token]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -191,7 +235,7 @@ export default function DebtsPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+        background: "var(--color-bg-primary, #FAFBFC)"
       }}>
         <div style={{
           background: "white",
@@ -208,7 +252,7 @@ export default function DebtsPage() {
   return (
     <div style={{
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              background: "var(--color-primary, #4F46E5)",
       padding: "20px"
     }}>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -239,7 +283,7 @@ export default function DebtsPage() {
             <h1 style={{
               fontSize: "28px",
               fontWeight: "700",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              background: "var(--color-bg-primary, #FAFBFC)",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               marginTop: "4px"
@@ -265,7 +309,7 @@ export default function DebtsPage() {
             }}
             style={{
               padding: "10px 20px",
-              background: showCreateForm ? "#e74c3c" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              background: showCreateForm ? "var(--color-expense, #B45309)" : "var(--color-primary, #4F46E5)",
               color: "white",
               border: "none",
               borderRadius: "8px",
@@ -281,11 +325,11 @@ export default function DebtsPage() {
         {error && (
           <div style={{
             background: "#fee",
-            color: "#e74c3c",
+              color: "var(--color-expense, #B45309)",
             padding: "16px",
             borderRadius: "12px",
             marginBottom: "24px",
-            borderLeft: "4px solid #e74c3c"
+            borderLeft: "4px solid var(--color-expense, #B45309)"
           }}>
             {error}
           </div>
@@ -305,13 +349,13 @@ export default function DebtsPage() {
           }}>
             <div>
               <div style={{ fontSize: "14px", color: "#666", marginBottom: "4px" }}>Total Mensual</div>
-              <div style={{ fontSize: "24px", fontWeight: "700", color: "#e74c3c" }}>
+              <div className="secondary-number" style={{ color: "var(--color-expense, #B45309)" }}>
                 {fmtMoney(statistics.totalMonthlyPayment, user?.currencyCode || "USD")}
               </div>
             </div>
             <div>
               <div style={{ fontSize: "14px", color: "#666", marginBottom: "4px" }}>Duración Promedio</div>
-              <div style={{ fontSize: "24px", fontWeight: "700", color: "#667eea" }}>
+              <div className="secondary-number" style={{ color: "var(--color-primary, #4F46E5)" }}>
                 {statistics.averageDuration.toFixed(1)} meses
               </div>
             </div>
@@ -321,10 +365,34 @@ export default function DebtsPage() {
                 {statistics.activeDebts} / {statistics.totalDebts}
               </div>
             </div>
+            {statistics.completedDebts !== undefined && (
+              <div>
+                <div style={{ fontSize: "14px", color: "#666", marginBottom: "4px" }}>Deudas Completadas</div>
+                <div className="secondary-number" style={{ color: "var(--color-income, #059669)" }}>
+                  {statistics.completedDebts}
+                </div>
+              </div>
+            )}
+            {statistics.completionRate !== undefined && (
+              <div>
+                <div style={{ fontSize: "14px", color: "#666", marginBottom: "4px" }}>Tasa de Finalización</div>
+                <div className="secondary-number" style={{ color: "var(--color-primary, #4F46E5)" }}>
+                  {statistics.completionRate.toFixed(1)}%
+                </div>
+              </div>
+            )}
+            {statistics.averageTimeToComplete !== undefined && statistics.averageTimeToComplete > 0 && (
+              <div>
+                <div style={{ fontSize: "14px", color: "#666", marginBottom: "4px" }}>Tiempo Promedio</div>
+                <div style={{ fontSize: "24px", fontWeight: "700", color: "#f59e0b" }}>
+                  {statistics.averageTimeToComplete.toFixed(1)} meses
+                </div>
+              </div>
+            )}
             {statistics.latestEndDate && (
               <div>
                 <div style={{ fontSize: "14px", color: "#666", marginBottom: "4px" }}>Liberación Estimada</div>
-                <div style={{ fontSize: "24px", fontWeight: "700", color: "#27ae60" }}>
+                <div className="secondary-number" style={{ color: "var(--color-income, #059669)" }}>
                   {new Date(statistics.latestEndDate).toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
                 </div>
               </div>
@@ -494,7 +562,7 @@ export default function DebtsPage() {
                   type="submit"
                   style={{
                     padding: "12px 24px",
-                    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                    background: "var(--color-primary, #4F46E5)",
                     color: "white",
                     border: "none",
                     borderRadius: "8px",
@@ -536,9 +604,119 @@ export default function DebtsPage() {
           padding: "24px",
           boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
         }}>
-          <h2 style={{ fontSize: "22px", fontWeight: "700", marginBottom: "20px" }}>
-            Mis Deudas
-          </h2>
+          <div style={{ marginBottom: "20px" }}>
+            <h2 style={{ fontSize: "22px", fontWeight: "700", marginBottom: "16px" }}>
+              Mis Deudas
+            </h2>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
+              <span style={{ fontSize: "14px", fontWeight: "600", color: "#666", marginRight: "8px", alignSelf: "center" }}>Tipo:</span>
+              <button
+                onClick={() => setDebtTypeFilter("ALL")}
+                style={{
+                  padding: "8px 16px",
+                  background: debtTypeFilter === "ALL" ? "var(--color-primary, #4F46E5)" : "var(--color-bg-secondary, #F8F9FA)",
+                  color: debtTypeFilter === "ALL" ? "white" : "var(--color-text-primary, #111827)",
+                  border: debtTypeFilter === "ALL" ? "none" : "1px solid var(--color-border, #E5E7EB)",
+                  color: debtTypeFilter === "ALL" ? "white" : "#333",
+                  border: "none",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  cursor: "pointer"
+                }}
+              >
+                Todas
+              </button>
+              <button
+                onClick={() => setDebtTypeFilter("CREDIT")}
+                style={{
+                  padding: "8px 16px",
+                  background: debtTypeFilter === "CREDIT" ? "var(--color-primary, #4F46E5)" : "var(--color-bg-secondary, #F8F9FA)",
+                  color: debtTypeFilter === "CREDIT" ? "white" : "var(--color-text-primary, #111827)",
+                  border: debtTypeFilter === "CREDIT" ? "none" : "1px solid var(--color-border, #E5E7EB)",
+                  color: debtTypeFilter === "CREDIT" ? "white" : "#333",
+                  border: "none",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  cursor: "pointer"
+                }}
+              >
+                Crédito
+              </button>
+              <button
+                onClick={() => setDebtTypeFilter("OTHER")}
+                style={{
+                  padding: "8px 16px",
+                  background: debtTypeFilter === "OTHER" ? "var(--color-primary, #4F46E5)" : "var(--color-bg-secondary, #F8F9FA)",
+                  color: debtTypeFilter === "OTHER" ? "white" : "var(--color-text-primary, #111827)",
+                  border: debtTypeFilter === "OTHER" ? "none" : "1px solid var(--color-border, #E5E7EB)",
+                  color: debtTypeFilter === "OTHER" ? "white" : "#333",
+                  border: "none",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  cursor: "pointer"
+                }}
+              >
+                Otros
+              </button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+              <span style={{ fontSize: "14px", fontWeight: "600", color: "#666", marginRight: "8px", alignSelf: "center" }}>Estado:</span>
+              <button
+                onClick={() => setDebtStatusFilter("ALL")}
+                style={{
+                  padding: "8px 16px",
+                  background: debtStatusFilter === "ALL" ? "var(--color-primary, #4F46E5)" : "var(--color-bg-secondary, #F8F9FA)",
+                  color: debtStatusFilter === "ALL" ? "white" : "var(--color-text-primary, #111827)",
+                  border: debtStatusFilter === "ALL" ? "none" : "1px solid var(--color-border, #E5E7EB)",
+                  color: debtStatusFilter === "ALL" ? "white" : "#333",
+                  border: "none",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  cursor: "pointer"
+                }}
+              >
+                Todas
+              </button>
+              <button
+                onClick={() => setDebtStatusFilter("ACTIVE")}
+                style={{
+                  padding: "8px 16px",
+                  background: debtStatusFilter === "ACTIVE" ? "var(--color-primary, #4F46E5)" : "var(--color-bg-secondary, #F8F9FA)",
+                  color: debtStatusFilter === "ACTIVE" ? "white" : "var(--color-text-primary, #111827)",
+                  border: debtStatusFilter === "ACTIVE" ? "none" : "1px solid var(--color-border, #E5E7EB)",
+                  color: debtStatusFilter === "ACTIVE" ? "white" : "#333",
+                  border: "none",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  cursor: "pointer"
+                }}
+              >
+                Activas
+              </button>
+              <button
+                onClick={() => setDebtStatusFilter("COMPLETED")}
+                style={{
+                  padding: "8px 16px",
+                  background: debtStatusFilter === "COMPLETED" ? "var(--color-primary, #4F46E5)" : "var(--color-bg-secondary, #F8F9FA)",
+                  color: debtStatusFilter === "COMPLETED" ? "white" : "var(--color-text-primary, #111827)",
+                  border: debtStatusFilter === "COMPLETED" ? "none" : "1px solid var(--color-border, #E5E7EB)",
+                  color: debtStatusFilter === "COMPLETED" ? "white" : "#333",
+                  border: "none",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  cursor: "pointer"
+                }}
+              >
+                Completadas
+              </button>
+            </div>
+          </div>
           {debts.length === 0 ? (
             <p style={{ color: "#666", textAlign: "center", padding: "40px" }}>
               No hay deudas registradas. Crea una nueva deuda para comenzar.
@@ -549,6 +727,9 @@ export default function DebtsPage() {
               {debts
                 .filter((debt: any) => {
                   const info = calculateDebtInfo(debt);
+                  // Aplicar filtro de estado
+                  if (debtStatusFilter === "ACTIVE" && !info.isActive) return false;
+                  if (debtStatusFilter === "COMPLETED" && info.isActive) return false;
                   return info.isActive;
                 })
                 .map((debt: any) => {
@@ -565,6 +746,19 @@ export default function DebtsPage() {
                       <div style={{ flex: 1 }}>
                         <h3 style={{ fontSize: "18px", fontWeight: "700", color: "#333", marginBottom: "8px" }}>
                           {debt.description}
+                          {debt.debtType === "CREDIT" && (
+                            <span style={{
+                              marginLeft: "8px",
+                              padding: "4px 8px",
+                              background: "#e74c3c",
+                              color: "white",
+                              borderRadius: "4px",
+                              fontSize: "12px",
+                              fontWeight: "600"
+                            }}>
+                              Crédito
+                            </span>
+                          )}
                         </h3>
                         <div style={{ fontSize: "14px", color: "#666", marginBottom: "8px" }}>
                           <div><strong>Cuota mensual:</strong> {fmtMoney(debt.monthlyPaymentCents, debt.currencyCode)}</div>
@@ -596,7 +790,7 @@ export default function DebtsPage() {
                               <div style={{
                                 width: `${info.progress}%`,
                                 height: "100%",
-                                background: info.progress >= 100 ? "#27ae60" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                                background: info.progress >= 100 ? "var(--color-income, #059669)" : "var(--color-primary, #4F46E5)",
                                 transition: "width 0.3s"
                               }} />
                             </div>
@@ -604,6 +798,21 @@ export default function DebtsPage() {
                         )}
                       </div>
                       <div style={{ display: "flex", gap: "8px", flexDirection: "column" }}>
+                        <button
+                          onClick={() => handleMarkAsPaid(debt)}
+                          style={{
+                            padding: "8px 16px",
+                            background: "#27ae60",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "6px",
+                            fontSize: "12px",
+                            fontWeight: "600",
+                            cursor: "pointer"
+                          }}
+                        >
+                          Marcar como Pagada
+                        </button>
                         <button
                           onClick={() => startEdit(debt)}
                           style={{
@@ -644,6 +853,9 @@ export default function DebtsPage() {
               {debts
                 .filter((debt: any) => {
                   const info = calculateDebtInfo(debt);
+                  // Aplicar filtro de estado
+                  if (debtStatusFilter === "ACTIVE") return false;
+                  if (debtStatusFilter === "COMPLETED" && info.isActive) return false;
                   return !info.isActive;
                 })
                 .map((debt: any) => {
@@ -729,6 +941,140 @@ export default function DebtsPage() {
             </div>
           )}
         </div>
+        
+        {/* Modal de Confirmación de Pago */}
+        {showMarkPaidModal && selectedDebt && (
+          <div style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "20px"
+          }}>
+            <div style={{
+              background: "white",
+              borderRadius: "16px",
+              padding: "24px",
+              maxWidth: "500px",
+              width: "100%",
+              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)"
+            }}>
+              <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px" }}>
+                Confirmar Pago de Cuota
+              </h3>
+              <div style={{ marginBottom: "16px" }}>
+                <p style={{ fontSize: "14px", color: "#666", marginBottom: "8px" }}>
+                  <strong>Deuda:</strong> {selectedDebt.description}
+                </p>
+                <p style={{ fontSize: "14px", color: "#666", marginBottom: "8px" }}>
+                  <strong>Cuota mensual:</strong> {fmtMoney(selectedDebt.monthlyPaymentCents, selectedDebt.currencyCode)}
+                </p>
+              </div>
+              
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontWeight: "600", fontSize: "14px" }}>
+                  Monto a pagar *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    border: "2px solid #e0e0e0",
+                    borderRadius: "8px",
+                    fontSize: "14px"
+                  }}
+                />
+              </div>
+              
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", marginBottom: "8px", fontWeight: "600", fontSize: "14px" }}>
+                  Cuenta
+                </label>
+                <select
+                  value={paymentAccountId}
+                  onChange={(e) => setPaymentAccountId(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    border: "2px solid #e0e0e0",
+                    borderRadius: "8px",
+                    fontSize: "14px",
+                    background: "white",
+                    cursor: "pointer"
+                  }}
+                >
+                  {accounts.map(acc => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name} ({acc.currencyCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div style={{
+                padding: "12px",
+                background: "#e8f5e9",
+                borderRadius: "8px",
+                fontSize: "12px",
+                color: "#2e7d32",
+                marginBottom: "16px"
+              }}>
+                ✅ Se creará una transacción de gasto automáticamente
+              </div>
+              
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button
+                  onClick={confirmMarkAsPaid}
+                  style={{
+                    flex: 1,
+                    padding: "12px 24px",
+                    background: "#27ae60",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    cursor: "pointer"
+                  }}
+                >
+                  Confirmar Pago
+                </button>
+                <button
+                  onClick={() => {
+                    setShowMarkPaidModal(false);
+                    setSelectedDebt(null);
+                    setPaymentAmount("");
+                    setPaymentAccountId("");
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: "12px 24px",
+                    background: "#f0f0f0",
+                    color: "#333",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    cursor: "pointer"
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

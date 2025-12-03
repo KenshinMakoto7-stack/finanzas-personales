@@ -39,9 +39,10 @@ export default function LoginPage() {
       padding: "20px"
     }}>
       <div style={{
-        background: "white",
+        background: "var(--color-bg-white, #FFFFFF)",
         borderRadius: "20px",
-        boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+        boxShadow: "var(--shadow-xl, 0 20px 25px -5px rgba(0, 0, 0, 0.1))",
+        border: "1px solid var(--color-border-light, #F3F4F6)",
         padding: "40px",
         maxWidth: "420px",
         width: "100%"
@@ -50,14 +51,13 @@ export default function LoginPage() {
           <h1 style={{ 
             fontSize: "32px", 
             fontWeight: "700", 
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            marginBottom: "8px"
+            color: "var(--color-primary, #4F46E5)",
+            marginBottom: "8px",
+            fontFamily: "'Inter', sans-serif"
           }}>
             Finanzas Personales
           </h1>
-          <p style={{ color: "#666", fontSize: "16px" }}>Inicia sesión en tu cuenta</p>
+          <p style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "16px" }}>Inicia sesión en tu cuenta</p>
         </div>
 
         <Form form={form} onSubmit={onSubmit}>
@@ -79,13 +79,14 @@ export default function LoginPage() {
 
           {error && (
             <div style={{
-              background: "#fee",
-              color: "#e74c3c",
+              background: "rgba(239, 68, 68, 0.1)",
+              color: "var(--color-error, #EF4444)",
               padding: "12px 16px",
               borderRadius: "8px",
               marginBottom: "20px",
-              borderLeft: "4px solid #e74c3c",
-              fontSize: "14px"
+              borderLeft: "4px solid var(--color-error, #EF4444)",
+              fontSize: "14px",
+              fontFamily: "'Inter', sans-serif"
             }}>
               {error}
             </div>
@@ -96,7 +97,7 @@ export default function LoginPage() {
           </Button>
 
           <div style={{ textAlign: "center", marginTop: "24px" }}>
-            <p style={{ color: "#666", fontSize: "14px", marginBottom: "8px" }}>
+            <p style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "14px", marginBottom: "8px" }}>
               <Link href="/forgot-password" style={{ 
                 color: "#667eea", 
                 textDecoration: "none", 

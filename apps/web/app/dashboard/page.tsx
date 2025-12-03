@@ -328,14 +328,14 @@ export default function Dashboard() {
     return (
       <div style={{ 
         minHeight: "100vh", 
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+        background: "var(--color-bg-primary, #FAFBFC)"
       }}>
         <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
           <div style={{
-            background: "white",
+            background: "var(--color-bg-white, #FFFFFF)",
             borderRadius: "20px",
             margin: "20px",
-            boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+            boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))"
           }}>
             <DashboardSkeleton />
           </div>
@@ -350,17 +350,18 @@ export default function Dashboard() {
   return (
     <div style={{ 
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      background: "var(--color-bg-primary, #FAFBFC)",
       padding: isMobile ? "12px" : "20px"
     }}>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         {/* Header */}
         <div style={{
-          background: "white",
+          background: "var(--color-bg-white, #FFFFFF)",
           borderRadius: isMobile ? "16px" : "20px",
           padding: isMobile ? "16px" : "24px 32px",
           marginBottom: isMobile ? "16px" : "24px",
-          boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)",
+          boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+          border: "1px solid var(--color-border-light, #F3F4F6)",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -371,14 +372,13 @@ export default function Dashboard() {
             <h1 style={{
               fontSize: isMobile ? "22px" : "28px",
               fontWeight: "700",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              marginBottom: "4px"
+              color: "var(--color-primary, #4F46E5)",
+              marginBottom: "4px",
+              fontFamily: "'Inter', sans-serif"
             }}>
               Dashboard Mensual
             </h1>
-            <p style={{ color: "#666", fontSize: isMobile ? "12px" : "14px" }}>{user.email}</p>
+            <p style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: isMobile ? "12px" : "14px" }}>{user.email}</p>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%" }}>
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
@@ -388,13 +388,15 @@ export default function Dashboard() {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 style={{
                   padding: isMobile ? "12px 14px" : "10px 16px",
-                  border: "2px solid #e0e0e0",
+                  border: "1px solid var(--color-border, #E5E7EB)",
                   borderRadius: "8px",
                   fontSize: "16px",
                   fontWeight: "600",
-                  background: "white",
+                  background: "var(--color-bg-white, #FFFFFF)",
                   minHeight: isMobile ? "48px" : "auto",
-                  flex: isMobile ? "1" : "none"
+                  flex: isMobile ? "1" : "none",
+                  fontFamily: "'Inter', sans-serif",
+                  color: "var(--color-text-primary, #111827)"
                 }}
               />
               {!isMobile && (
@@ -403,7 +405,7 @@ export default function Dashboard() {
                   background: "linear-gradient(135deg, #f0f0f0 0%, #e8e8e8 100%)", 
                   borderRadius: "8px", 
                   fontSize: "12px", 
-                  color: "#666",
+                  color: "var(--color-text-secondary, #6B7280)",
                   border: "1px solid #d0d0d0",
                   boxShadow: "0 2px 4px rgba(0,0,0,0.05)"
                 }}>
@@ -420,24 +422,27 @@ export default function Dashboard() {
               <Link href="/transactions/new" style={{ textDecoration: "none" }}>
                 <button style={{
                   padding: "12px 16px",
-                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  background: "var(--color-primary, #4F46E5)",
                   color: "white",
                   border: "none",
                   borderRadius: "10px",
                   fontSize: "13px",
                   fontWeight: "600",
                   cursor: "pointer",
-                  boxShadow: "0 4px 12px rgba(102, 126, 234, 0.4)",
-                  transition: "all 0.2s",
-                  width: "100%"
+                  boxShadow: "var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1))",
+                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                  width: "100%",
+                  fontFamily: "'Inter', sans-serif"
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.transform = "translateY(-2px)";
-                  e.currentTarget.style.boxShadow = "0 6px 16px rgba(102, 126, 234, 0.5)";
+                  e.currentTarget.style.background = "var(--color-primary-hover, #4338CA)";
+                  e.currentTarget.style.boxShadow = "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(102, 126, 234, 0.4)";
+                  e.currentTarget.style.background = "var(--color-primary, #4F46E5)";
+                  e.currentTarget.style.boxShadow = "var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1))";
                 }}>
                   ➕ Nueva Transacción
                 </button>
@@ -445,26 +450,27 @@ export default function Dashboard() {
               <Link href="/transactions" style={{ textDecoration: "none" }}>
                 <button style={{
                   padding: "12px 16px",
-                  background: "white",
-                  color: "#333",
-                  border: "2px solid #e0e0e0",
+                  background: "var(--color-bg-white, #FFFFFF)",
+                  color: "var(--color-text-primary, #111827)",
+                  border: "1px solid var(--color-border, #E5E7EB)",
                   borderRadius: "10px",
                   fontSize: "13px",
                   fontWeight: "600",
                   cursor: "pointer",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
-                  transition: "all 0.2s",
-                  width: "100%"
+                  boxShadow: "var(--shadow-sm, 0 1px 2px 0 rgba(0, 0, 0, 0.05))",
+                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                  width: "100%",
+                  fontFamily: "'Inter', sans-serif"
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#667eea";
+                  e.currentTarget.style.borderColor = "var(--color-primary, #4F46E5)";
                   e.currentTarget.style.transform = "translateY(-2px)";
-                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)";
+                  e.currentTarget.style.boxShadow = "var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1))";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#e0e0e0";
+                  e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
                   e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.08)";
+                  e.currentTarget.style.boxShadow = "var(--shadow-sm, 0 1px 2px 0 rgba(0, 0, 0, 0.05))";
                 }}>
                   📋 Transacciones
                 </button>
@@ -472,9 +478,9 @@ export default function Dashboard() {
               <Link href="/statistics" style={{ textDecoration: "none" }}>
                 <button style={{
                   padding: "12px 16px",
-                  background: "white",
-                  color: "#333",
-                  border: "2px solid #e0e0e0",
+                  background: "var(--color-bg-white, #FFFFFF)",
+                  color: "var(--color-text-primary, #111827)",
+                  border: "1px solid var(--color-border, #E5E7EB)",
                   borderRadius: "10px",
                   fontSize: "13px",
                   fontWeight: "600",
@@ -489,7 +495,7 @@ export default function Dashboard() {
                   e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#e0e0e0";
+                  e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
                   e.currentTarget.style.transform = "translateY(0)";
                   e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.08)";
                 }}>
@@ -499,9 +505,9 @@ export default function Dashboard() {
               <Link href="/savings" style={{ textDecoration: "none" }}>
                 <button style={{
                   padding: "12px 16px",
-                  background: "white",
-                  color: "#333",
-                  border: "2px solid #e0e0e0",
+                  background: "var(--color-bg-white, #FFFFFF)",
+                  color: "var(--color-text-primary, #111827)",
+                  border: "1px solid var(--color-border, #E5E7EB)",
                   borderRadius: "10px",
                   fontSize: "13px",
                   fontWeight: "600",
@@ -516,7 +522,7 @@ export default function Dashboard() {
                   e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#e0e0e0";
+                  e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
                   e.currentTarget.style.transform = "translateY(0)";
                   e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.08)";
                 }}>
@@ -526,9 +532,9 @@ export default function Dashboard() {
               <Link href="/categories" style={{ textDecoration: "none" }}>
                 <button style={{
                   padding: "12px 16px",
-                  background: "white",
-                  color: "#333",
-                  border: "2px solid #e0e0e0",
+                  background: "var(--color-bg-white, #FFFFFF)",
+                  color: "var(--color-text-primary, #111827)",
+                  border: "1px solid var(--color-border, #E5E7EB)",
                   borderRadius: "10px",
                   fontSize: "13px",
                   fontWeight: "600",
@@ -543,7 +549,7 @@ export default function Dashboard() {
                   e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#e0e0e0";
+                  e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
                   e.currentTarget.style.transform = "translateY(0)";
                   e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.08)";
                 }}>
@@ -553,9 +559,9 @@ export default function Dashboard() {
               <Link href="/debts" style={{ textDecoration: "none" }}>
                 <button style={{
                   padding: "12px 16px",
-                  background: "white",
-                  color: "#333",
-                  border: "2px solid #e0e0e0",
+                  background: "var(--color-bg-white, #FFFFFF)",
+                  color: "var(--color-text-primary, #111827)",
+                  border: "1px solid var(--color-border, #E5E7EB)",
                   borderRadius: "10px",
                   fontSize: "13px",
                   fontWeight: "600",
@@ -570,7 +576,7 @@ export default function Dashboard() {
                   e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#e0e0e0";
+                  e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
                   e.currentTarget.style.transform = "translateY(0)";
                   e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.08)";
                 }}>
@@ -580,9 +586,9 @@ export default function Dashboard() {
               <Link href="/recurring" style={{ textDecoration: "none" }}>
                 <button style={{
                   padding: "12px 16px",
-                  background: "white",
-                  color: "#333",
-                  border: "2px solid #e0e0e0",
+                  background: "var(--color-bg-white, #FFFFFF)",
+                  color: "var(--color-text-primary, #111827)",
+                  border: "1px solid var(--color-border, #E5E7EB)",
                   borderRadius: "10px",
                   fontSize: "13px",
                   fontWeight: "600",
@@ -597,7 +603,7 @@ export default function Dashboard() {
                   e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#e0e0e0";
+                  e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
                   e.currentTarget.style.transform = "translateY(0)";
                   e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.08)";
                 }}>
@@ -608,7 +614,7 @@ export default function Dashboard() {
                 onClick={() => { logout(); router.push("/login"); }}
                 style={{
                   padding: "12px 16px",
-                  background: "white",
+                  background: "var(--color-bg-white, #FFFFFF)",
                   color: "#e74c3c",
                   border: "2px solid #e74c3c",
                   borderRadius: "10px",
@@ -626,7 +632,7 @@ export default function Dashboard() {
                   e.currentTarget.style.boxShadow = "0 4px 12px rgba(231, 76, 60, 0.3)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "white";
+                  e.currentTarget.style.background = "var(--color-bg-white, #FFFFFF)";
                   e.currentTarget.style.color = "#e74c3c";
                   e.currentTarget.style.transform = "translateY(0)";
                   e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.08)";
@@ -647,37 +653,39 @@ export default function Dashboard() {
             marginBottom: isMobile ? "16px" : "24px"
           }}>
             <div style={{
-              background: "white",
+              background: "var(--color-bg-white, #FFFFFF)",
               borderRadius: isMobile ? "12px" : "16px",
               padding: isMobile ? "16px" : "24px",
-              boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)",
-              borderLeft: "4px solid #e74c3c"
+              boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+              borderLeft: "4px solid var(--color-expense, #B45309)",
+              border: "1px solid var(--color-border-light, #F3F4F6)"
             }}>
-              <div style={{ color: "#666", fontSize: isMobile ? "12px" : "14px", marginBottom: "8px", fontWeight: "600" }}>
+              <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: isMobile ? "12px" : "14px", marginBottom: "8px", fontWeight: "600" }}>
                 Gasto Acumulado del Día
               </div>
-              <div style={{ fontSize: isMobile ? "24px" : "32px", fontWeight: "700", color: "#e74c3c", marginBottom: "8px" }}>
+              <div className="secondary-number" style={{ color: "var(--color-expense, #B45309)", marginBottom: "8px" }}>
                 {fmtMoney(dailyData.spentToday, user.currencyCode)}
               </div>
-              <div style={{ color: "#999", fontSize: "12px" }}>
+              <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
                 {new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
               </div>
             </div>
 
             <div style={{
-              background: "white",
+              background: "var(--color-bg-white, #FFFFFF)",
               borderRadius: isMobile ? "12px" : "16px",
               padding: isMobile ? "16px" : "24px",
-              boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)",
-              borderLeft: "4px solid #667eea"
+              boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+              borderLeft: "4px solid var(--color-primary, #4F46E5)",
+              border: "1px solid var(--color-border-light, #F3F4F6)"
             }}>
-              <div style={{ color: "#666", fontSize: isMobile ? "12px" : "14px", marginBottom: "8px", fontWeight: "600" }}>
+              <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: isMobile ? "12px" : "14px", marginBottom: "8px", fontWeight: "600" }}>
                 Presupuesto del Día
               </div>
-              <div style={{ fontSize: isMobile ? "24px" : "32px", fontWeight: "700", color: "#667eea", marginBottom: "8px" }}>
+              <div className="secondary-number" style={{ color: "var(--color-primary, #4F46E5)", marginBottom: "8px" }}>
                 {fmtMoney(dailyData.dailyBudget, user.currencyCode)}
               </div>
-              <div style={{ color: "#999", fontSize: "12px" }}>
+              <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
                 {dailyData.dailyBudget > 0 
                   ? `${Math.round((dailyData.spentToday / dailyData.dailyBudget) * 100)}% utilizado`
                   : "Sin presupuesto"}
@@ -685,40 +693,42 @@ export default function Dashboard() {
             </div>
 
             <div style={{
-              background: "white",
+              background: "var(--color-bg-white, #FFFFFF)",
               borderRadius: isMobile ? "12px" : "16px",
               padding: isMobile ? "16px" : "24px",
-              boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)",
-              borderLeft: "4px solid #27ae60"
+              boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+              borderLeft: "4px solid var(--color-income, #059669)",
+              border: "1px solid var(--color-border-light, #F3F4F6)"
             }}>
-              <div style={{ color: "#666", fontSize: isMobile ? "12px" : "14px", marginBottom: "8px", fontWeight: "600" }}>
+              <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: isMobile ? "12px" : "14px", marginBottom: "8px", fontWeight: "600" }}>
                 Restante del Día
               </div>
               <div style={{ 
                 fontSize: isMobile ? "24px" : "32px", 
                 fontWeight: "700", 
-                color: dailyData.remainingToday >= 0 ? "#27ae60" : "#e74c3c", 
+                color: dailyData.remainingToday >= 0 ? "var(--color-balance-positive, #059669)" : "var(--color-balance-negative, #B45309)", 
                 marginBottom: "8px" 
               }}>
                 {fmtMoney(dailyData.remainingToday, user.currencyCode)}
               </div>
-              <div style={{ color: "#999", fontSize: "12px" }}>
+              <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
                 {dailyData.remainingToday >= 0 ? "Disponible" : "Excedido"}
               </div>
             </div>
 
             {previousMonthData && (
               <div style={{
-                background: "white",
+                background: "var(--color-bg-white, #FFFFFF)",
                 borderRadius: "16px",
                 padding: "24px",
-                boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)",
-                borderLeft: "4px solid #f39c12"
+                boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+                borderLeft: "4px solid var(--color-secondary-warning, #F59E0B)",
+                border: "1px solid var(--color-border-light, #F3F4F6)"
               }}>
-                <div style={{ color: "#666", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
+                <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
                   Comparativo Mes Pasado
                 </div>
-                <div style={{ fontSize: "32px", fontWeight: "700", color: "#f39c12", marginBottom: "8px" }}>
+                <div className="secondary-number" style={{ color: "var(--color-secondary-warning, #F59E0B)", marginBottom: "8px" }}>
                   {fmtMoney(previousMonthData.spentUpToSameDay, user.currencyCode)}
                 </div>
                 <div style={{ color: "#999", fontSize: "12px", marginBottom: "4px" }}>
@@ -726,7 +736,7 @@ export default function Dashboard() {
                 </div>
                 <div style={{ 
                   fontSize: "12px", 
-                  color: dailyData.spentToday > previousMonthData.spentUpToSameDay ? "#e74c3c" : "#27ae60",
+                  color: dailyData.spentToday > previousMonthData.spentUpToSameDay ? "var(--color-expense, #B45309)" : "var(--color-income, #059669)",
                   fontWeight: "600"
                 }}>
                   {dailyData.spentToday > previousMonthData.spentUpToSameDay 
@@ -741,22 +751,23 @@ export default function Dashboard() {
         {/* Transacciones Recurrentes Pendientes */}
         {pendingRecurring.length > 0 && (
           <div style={{
-            background: "white",
+            background: "var(--color-bg-white, #FFFFFF)",
             borderRadius: "16px",
             padding: "24px",
             marginBottom: "24px",
-            boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+            boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+            border: "1px solid var(--color-border-light, #F3F4F6)"
           }}>
-            <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "#333" }}>
+            <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "var(--color-text-primary, #111827)", fontFamily: "'Inter', sans-serif" }}>
               🔄 Pendientes Recurrentes del Mes
             </h3>
             <div style={{ display: "grid", gap: "12px" }}>
               {pendingRecurring.map((tx: any) => (
                 <div key={tx.id} style={{
                   padding: "16px",
-                  background: "#f8f9fa",
+                  background: "var(--color-bg-secondary, #F8F9FA)",
                   borderRadius: "12px",
-                  border: "1px solid #e0e0e0",
+                  border: "1px solid var(--color-border, #E5E7EB)",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
@@ -764,24 +775,24 @@ export default function Dashboard() {
                   gap: "12px"
                 }}>
                   <div style={{ flex: 1, minWidth: "200px" }}>
-                    <div style={{ fontWeight: "600", color: "#333", marginBottom: "4px" }}>
+                    <div style={{ fontWeight: "600", color: "var(--color-text-primary, #111827)", marginBottom: "4px" }}>
                       {tx.description || "Sin descripción"}
                     </div>
-                    <div style={{ fontSize: "12px", color: "#666", marginBottom: "4px" }}>
+                    <div style={{ fontSize: "12px", color: "var(--color-text-secondary, #6B7280)", marginBottom: "4px" }}>
                       {tx.category?.name || "Sin categoría"}
                     </div>
-                    <div style={{ fontSize: "12px", color: "#999" }}>
+                    <div style={{ fontSize: "12px", color: "var(--color-text-tertiary, #9CA3AF)" }}>
                       {tx.nextOccurrence 
                         ? `Próxima: ${new Date(tx.nextOccurrence).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}`
                         : "Sin fecha programada"}
                     </div>
                   </div>
                   <div style={{ textAlign: "right", marginRight: "12px" }}>
-                    <div style={{ fontSize: "18px", fontWeight: "700", color: tx.type === "INCOME" ? "#27ae60" : "#e74c3c", marginBottom: "4px" }}>
+                    <div style={{ fontSize: "18px", fontWeight: "700", color: tx.type === "INCOME" ? "var(--color-income, #059669)" : "var(--color-expense, #B45309)", marginBottom: "4px" }}>
                       {tx.type === "INCOME" ? "+" : "-"}{fmtMoney(tx.amountCents, tx.currencyCode || user.currencyCode)}
                     </div>
                     {tx.remainingOccurrences !== null && (
-                      <div style={{ fontSize: "11px", color: "#999" }}>
+                      <div style={{ fontSize: "11px", color: "var(--color-text-tertiary, #9CA3AF)" }}>
                         {tx.remainingOccurrences} restantes
                       </div>
                     )}
@@ -792,23 +803,26 @@ export default function Dashboard() {
                   >
                     <button style={{
                       padding: "10px 20px",
-                      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                      background: "var(--color-primary, #4F46E5)",
                       color: "white",
                       border: "none",
                       borderRadius: "8px",
                       fontSize: "13px",
                       fontWeight: "600",
                       cursor: "pointer",
-                      boxShadow: "0 2px 6px rgba(102, 126, 234, 0.3)",
-                      transition: "all 0.2s"
+                      boxShadow: "var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1))",
+                      transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                      fontFamily: "'Inter', sans-serif"
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.transform = "translateY(-2px)";
-                      e.currentTarget.style.boxShadow = "0 4px 12px rgba(102, 126, 234, 0.4)";
+                      e.currentTarget.style.background = "var(--color-primary-hover, #4338CA)";
+                      e.currentTarget.style.boxShadow = "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))";
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.boxShadow = "0 2px 6px rgba(102, 126, 234, 0.3)";
+                      e.currentTarget.style.background = "var(--color-primary, #4F46E5)";
+                      e.currentTarget.style.boxShadow = "var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1))";
                     }}>
                       Crear Transacción
                     </button>
@@ -827,57 +841,60 @@ export default function Dashboard() {
           marginBottom: "24px"
         }}>
           <div style={{
-            background: "white",
+            background: "var(--color-bg-white, #FFFFFF)",
             borderRadius: "16px",
             padding: "24px",
-            boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+            boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+            border: "1px solid var(--color-border-light, #F3F4F6)"
           }}>
-            <div style={{ color: "#666", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
+            <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
               Ingresos del Mes
             </div>
-            <div style={{ fontSize: "32px", fontWeight: "700", color: "#27ae60", marginBottom: "8px" }}>
+            <div className="secondary-number" style={{ color: "var(--color-income, #059669)", marginBottom: "8px" }}>
               {monthlyData ? fmtMoney(monthlyData.totalIncome, user.currencyCode) : "..."}
             </div>
-            <div style={{ color: "#999", fontSize: "12px" }}>
+            <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
               {monthNames[month - 1]} {year}
             </div>
           </div>
 
           <div style={{
-            background: "white",
+            background: "var(--color-bg-white, #FFFFFF)",
             borderRadius: "16px",
             padding: "24px",
-            boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+            boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+            border: "1px solid var(--color-border-light, #F3F4F6)"
           }}>
-            <div style={{ color: "#666", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
+            <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
               Gastos del Mes
             </div>
-            <div style={{ fontSize: "32px", fontWeight: "700", color: "#e74c3c", marginBottom: "8px" }}>
+            <div className="secondary-number" style={{ color: "var(--color-expense, #B45309)", marginBottom: "8px" }}>
               {monthlyData ? fmtMoney(monthlyData.totalExpenses, user.currencyCode) : "..."}
             </div>
-            <div style={{ color: "#999", fontSize: "12px" }}>
+            <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
               {monthlyData?.transactionCount || 0} transacciones
             </div>
           </div>
 
           <div style={{
-            background: "white",
+            background: "var(--color-bg-white, #FFFFFF)",
             borderRadius: "16px",
             padding: "24px",
-            boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+            boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+            border: "1px solid var(--color-border-light, #F3F4F6)"
           }}>
-            <div style={{ color: "#666", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
+            <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
               Balance del Mes
             </div>
             <div style={{ 
               fontSize: "32px", 
               fontWeight: "700", 
-              color: monthlyData && monthlyData.balance >= 0 ? "#27ae60" : "#e74c3c", 
+              color: monthlyData && monthlyData.balance >= 0 ? "var(--color-balance-positive, #059669)" : "var(--color-balance-negative, #B45309)", 
               marginBottom: "8px" 
             }}>
               {monthlyData ? fmtMoney(monthlyData.balance, user.currencyCode) : "..."}
             </div>
-            <div style={{ color: "#999", fontSize: "12px" }}>
+            <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
               {monthlyData && monthlyData.totalIncome > 0 
                 ? `${Math.round((monthlyData.balance / monthlyData.totalIncome) * 100)}% de ahorro`
                 : "Sin ingresos"}
@@ -885,15 +902,16 @@ export default function Dashboard() {
           </div>
 
           <div style={{
-            background: "white",
+            background: "var(--color-bg-white, #FFFFFF)",
             borderRadius: "16px",
             padding: "24px",
-            boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+            boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+            border: "1px solid var(--color-border-light, #F3F4F6)"
           }}>
-            <div style={{ color: "#666", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
+            <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
               Presupuesto Diario Restante
             </div>
-            <div style={{ fontSize: "32px", fontWeight: "700", color: "#667eea", marginBottom: "8px" }}>
+            <div className="secondary-number" style={{ color: "var(--color-primary, #4F46E5)", marginBottom: "8px" }}>
               {(() => {
                 if (!monthlyData || !data) return "...";
                 
@@ -912,7 +930,7 @@ export default function Dashboard() {
                 return fmtMoney(dailyBudget, user.currencyCode);
               })()}
             </div>
-            <div style={{ color: "#999", fontSize: "12px" }}>
+            <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
               {data?.startOfDay?.remainingDaysIncludingToday 
                 ? `${data.startOfDay.remainingDaysIncludingToday} días restantes`
                 : "Calculando..."}
@@ -923,19 +941,20 @@ export default function Dashboard() {
         {/* Meta de Ahorro */}
         {goalData && (
           <div style={{
-            background: "white",
+            background: "var(--color-bg-white, #FFFFFF)",
             borderRadius: "16px",
             padding: "24px",
             marginBottom: "24px",
-            boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+            boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+            border: "1px solid var(--color-border-light, #F3F4F6)"
           }}>
-            <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "#333" }}>
+            <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "var(--color-text-primary, #111827)", fontFamily: "'Inter', sans-serif" }}>
               Meta de Ahorro del Mes
             </h3>
             <div style={{ marginBottom: "16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
                 <span style={{ fontSize: "14px", color: "#666" }}>Progreso</span>
-                <span style={{ fontSize: "14px", fontWeight: "600", color: goalData.progress >= 100 ? "#27ae60" : "#667eea" }}>
+                <span style={{ fontSize: "14px", fontWeight: "600", color: goalData.progress >= 100 ? "var(--color-income, #059669)" : "var(--color-primary, #4F46E5)" }}>
                   {goalData.progress}%
                 </span>
               </div>
@@ -951,8 +970,8 @@ export default function Dashboard() {
                   width: `${Math.min(100, goalData.progress)}%`,
                   height: "100%",
                   background: goalData.progress >= 100 
-                    ? "linear-gradient(135deg, #27ae60 0%, #2ecc71 100%)"
-                    : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                    ? "var(--color-income, #059669)"
+                    : "var(--color-primary, #4F46E5)",
                   transition: "width 0.3s",
                   borderRadius: goalData.progress >= 100 ? "10px" : "10px 0 0 10px"
                 }} />
@@ -978,20 +997,20 @@ export default function Dashboard() {
               marginTop: "16px"
             }}>
               <div>
-                <div style={{ fontSize: "12px", color: "#666", marginBottom: "4px" }}>Meta</div>
-                <div style={{ fontSize: "18px", fontWeight: "700", color: "#333" }}>
+                <div style={{ fontSize: "12px", color: "var(--color-text-secondary, #6B7280)", marginBottom: "4px" }}>Meta</div>
+                <div style={{ fontSize: "18px", fontWeight: "700", color: "var(--color-text-primary, #111827)" }}>
                   {fmtMoney(goalData.savingGoalCents, user.currencyCode)}
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: "12px", color: "#666", marginBottom: "4px" }}>Ahorrado</div>
-                <div style={{ fontSize: "18px", fontWeight: "700", color: "#27ae60" }}>
+                <div style={{ fontSize: "12px", color: "var(--color-text-secondary, #6B7280)", marginBottom: "4px" }}>Ahorrado</div>
+                <div style={{ fontSize: "18px", fontWeight: "700", color: "var(--color-income, #059669)" }}>
                   {fmtMoney(goalData.saved, user.currencyCode)}
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: "12px", color: "#666", marginBottom: "4px" }}>Restante</div>
-                <div style={{ fontSize: "18px", fontWeight: "700", color: goalData.remaining > 0 ? "#e74c3c" : "#27ae60" }}>
+                <div style={{ fontSize: "12px", color: "var(--color-text-secondary, #6B7280)", marginBottom: "4px" }}>Restante</div>
+                <div style={{ fontSize: "18px", fontWeight: "700", color: goalData.remaining > 0 ? "var(--color-expense, #B45309)" : "var(--color-income, #059669)" }}>
                   {fmtMoney(goalData.remaining, user.currencyCode)}
                 </div>
               </div>
@@ -1000,11 +1019,12 @@ export default function Dashboard() {
               <div style={{
                 marginTop: "16px",
                 padding: "12px",
-                background: "#d4edda",
+                background: "rgba(5, 150, 105, 0.1)",
                 borderRadius: "8px",
-                textAlign: "center"
+                textAlign: "center",
+                border: "1px solid var(--color-income, #059669)"
               }}>
-                <span style={{ color: "#155724", fontWeight: "600" }}>🎉 ¡Meta alcanzada!</span>
+                <span style={{ color: "var(--color-income, #059669)", fontWeight: "600" }}>🎉 ¡Meta alcanzada!</span>
               </div>
             )}
           </div>
@@ -1020,20 +1040,21 @@ export default function Dashboard() {
           }}>
             {/* Gráfico de Tendencias */}
             <div style={{
-              background: "white",
+              background: "var(--color-bg-white, #FFFFFF)",
               borderRadius: "16px",
               padding: "24px",
-              boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+              boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+              border: "1px solid var(--color-border-light, #F3F4F6)"
             }}>
-              <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "#333" }}>
+              <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "var(--color-text-primary, #111827)", fontFamily: "'Inter', sans-serif" }}>
                 Tendencias (Últimos 6 Meses)
               </h3>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border, #E5E7EB)" />
                   <XAxis 
                     dataKey="month" 
-                    stroke="#666"
+                    stroke="var(--color-text-secondary, #6B7280)"
                     style={{ fontSize: "12px" }}
                     tickFormatter={(value) => {
                       const [y, m] = value.split("-");
@@ -1041,20 +1062,20 @@ export default function Dashboard() {
                     }}
                   />
                   <YAxis 
-                    stroke="#666"
+                    stroke="var(--color-text-secondary, #6B7280)"
                     style={{ fontSize: "12px" }}
                     tickFormatter={(value) => fmtMoney(value * 100, user.currencyCode)}
                   />
                   <Tooltip 
                     formatter={(value: number) => fmtMoney(value * 100, user.currencyCode)}
                     labelFormatter={(label) => `Mes: ${label}`}
-                    contentStyle={{ borderRadius: "8px", border: "1px solid #e0e0e0" }}
+                    contentStyle={{ borderRadius: "8px", border: "1px solid var(--color-border, #E5E7EB)", background: "var(--color-bg-white, #FFFFFF)" }}
                   />
                   <Legend />
                   <Line 
                     type="monotone" 
                     dataKey="Ingresos" 
-                    stroke="#27ae60" 
+                    stroke="var(--color-income, #059669)" 
                     strokeWidth={2}
                     dot={{ r: 4 }}
                     name="Ingresos"
@@ -1062,7 +1083,7 @@ export default function Dashboard() {
                   <Line 
                     type="monotone" 
                     dataKey="Gastos" 
-                    stroke="#e74c3c" 
+                    stroke="var(--color-expense, #B45309)" 
                     strokeWidth={2}
                     dot={{ r: 4 }}
                     name="Gastos"
@@ -1070,7 +1091,7 @@ export default function Dashboard() {
                   <Line 
                     type="monotone" 
                     dataKey="Balance" 
-                    stroke="#667eea" 
+                    stroke="var(--color-primary, #4F46E5)" 
                     strokeWidth={2}
                     dot={{ r: 4 }}
                     name="Balance"
@@ -1081,20 +1102,21 @@ export default function Dashboard() {
 
             {/* Gráfico de Barras - Comparación Mensual */}
             <div style={{
-              background: "white",
+              background: "var(--color-bg-white, #FFFFFF)",
               borderRadius: "16px",
               padding: "24px",
-              boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+              boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+              border: "1px solid var(--color-border-light, #F3F4F6)"
             }}>
-              <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "#333" }}>
+              <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "var(--color-text-primary, #111827)", fontFamily: "'Inter', sans-serif" }}>
                 Comparación Mensual
               </h3>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border, #E5E7EB)" />
                   <XAxis 
                     dataKey="month" 
-                    stroke="#666"
+                    stroke="var(--color-text-secondary, #6B7280)"
                     style={{ fontSize: "12px" }}
                     tickFormatter={(value) => {
                       const [y, m] = value.split("-");
@@ -1102,17 +1124,17 @@ export default function Dashboard() {
                     }}
                   />
                   <YAxis 
-                    stroke="#666"
+                    stroke="var(--color-text-secondary, #6B7280)"
                     style={{ fontSize: "12px" }}
                     tickFormatter={(value) => fmtMoney(value * 100, user.currencyCode)}
                   />
                   <Tooltip 
                     formatter={(value: number) => fmtMoney(value * 100, user.currencyCode)}
-                    contentStyle={{ borderRadius: "8px", border: "1px solid #e0e0e0" }}
+                    contentStyle={{ borderRadius: "8px", border: "1px solid var(--color-border, #E5E7EB)", background: "var(--color-bg-white, #FFFFFF)" }}
                   />
                   <Legend />
-                  <Bar dataKey="Ingresos" fill="#27ae60" name="Ingresos" />
-                  <Bar dataKey="Gastos" fill="#e74c3c" name="Gastos" />
+                  <Bar dataKey="Ingresos" fill="var(--color-income, #059669)" name="Ingresos" />
+                  <Bar dataKey="Gastos" fill="var(--color-expense, #B45309)" name="Gastos" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1128,12 +1150,13 @@ export default function Dashboard() {
             marginBottom: "24px"
           }}>
             <div style={{
-              background: "white",
+              background: "var(--color-bg-white, #FFFFFF)",
               borderRadius: "16px",
               padding: "24px",
-              boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+              boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+              border: "1px solid var(--color-border-light, #F3F4F6)"
             }}>
-              <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "#333" }}>
+              <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "var(--color-text-primary, #111827)", fontFamily: "'Inter', sans-serif" }}>
                 Distribución de Gastos por Categoría
               </h3>
               <ResponsiveContainer width="100%" height={300}>
@@ -1152,13 +1175,13 @@ export default function Dashboard() {
                     dataKey="value"
                   >
                     {monthlyData.expensesByCategory.map((_: any, index: number) => {
-                      const colors = ["#667eea", "#764ba2", "#f093fb", "#4facfe", "#43e97b", "#fa709a"];
+                      const colors = ["#4F46E5", "#059669", "#F59E0B", "#3B82F6", "#8B5CF6", "#10B981"];
                       return <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />;
                     })}
                   </Pie>
                   <Tooltip 
                     formatter={(value: number) => fmtMoney(value * 100, user.currencyCode)}
-                    contentStyle={{ borderRadius: "8px", border: "1px solid #e0e0e0" }}
+                    contentStyle={{ borderRadius: "8px", border: "1px solid var(--color-border, #E5E7EB)", background: "var(--color-bg-white, #FFFFFF)" }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -1166,12 +1189,13 @@ export default function Dashboard() {
 
             {/* Top Gastos por Categoría */}
             <div style={{
-              background: "white",
+              background: "var(--color-bg-white, #FFFFFF)",
               borderRadius: "16px",
               padding: "24px",
-              boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+              boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+              border: "1px solid var(--color-border-light, #F3F4F6)"
             }}>
-              <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "#333" }}>
+              <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "var(--color-text-primary, #111827)", fontFamily: "'Inter', sans-serif" }}>
                 Top Gastos por Categoría
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -1185,36 +1209,36 @@ export default function Dashboard() {
                       alignItems: "center",
                       gap: "16px",
                       padding: "12px",
-                      background: "#f8f9fa",
+                      background: "var(--color-bg-secondary, #F8F9FA)",
                       borderRadius: "8px"
                     }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: "600", color: "#333", marginBottom: "4px" }}>
+                        <div style={{ fontWeight: "600", color: "var(--color-text-primary, #111827)", marginBottom: "4px" }}>
                           {cat.categoryName}
                         </div>
-                        <div style={{ fontSize: "12px", color: "#666" }}>
+                        <div style={{ fontSize: "12px", color: "var(--color-text-secondary, #6B7280)" }}>
                           {cat.count} transacción{cat.count !== 1 ? "es" : ""}
                         </div>
                       </div>
                       <div style={{ textAlign: "right" }}>
-                        <div style={{ fontWeight: "700", color: "#e74c3c", marginBottom: "4px" }}>
+                        <div style={{ fontWeight: "700", color: "var(--color-expense, #B45309)", marginBottom: "4px" }}>
                           {fmtMoney(cat.amountCents, user.currencyCode)}
                         </div>
-                        <div style={{ fontSize: "12px", color: "#999" }}>
+                        <div style={{ fontSize: "12px", color: "var(--color-text-tertiary, #9CA3AF)" }}>
                           {Math.round(percentage)}%
                         </div>
                       </div>
                       <div style={{
                         width: "100px",
                         height: "8px",
-                        background: "#e0e0e0",
+                        background: "var(--color-border, #E5E7EB)",
                         borderRadius: "4px",
                         overflow: "hidden"
                       }}>
                         <div style={{
                           width: `${percentage}%`,
                           height: "100%",
-                          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                          background: "var(--color-primary, #4F46E5)",
                           transition: "width 0.3s"
                         }} />
                       </div>
@@ -1228,25 +1252,36 @@ export default function Dashboard() {
 
         {/* Acciones Rápidas */}
         <div style={{
-          background: "white",
+          background: "var(--color-bg-white, #FFFFFF)",
           borderRadius: "16px",
           padding: "24px",
-          boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)"
+          boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+          border: "1px solid var(--color-border-light, #F3F4F6)"
         }}>
-          <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "#333" }}>
+          <h3 style={{ fontSize: "20px", fontWeight: "700", marginBottom: "16px", color: "var(--color-text-primary, #111827)", fontFamily: "'Inter', sans-serif" }}>
             Acciones Rápidas
           </h3>
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
             <Link href="/transactions/new">
               <button style={{
                 padding: "12px 24px",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: "var(--color-primary, #4F46E5)",
                 color: "white",
                 border: "none",
                 borderRadius: "8px",
                 fontSize: "14px",
                 fontWeight: "600",
-                cursor: "pointer"
+                cursor: "pointer",
+                fontFamily: "'Inter', sans-serif",
+                transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--color-primary-hover, #4338CA)";
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "var(--color-primary, #4F46E5)";
+                e.currentTarget.style.transform = "translateY(0)";
               }}>
                 Nueva Transacción
               </button>
@@ -1254,13 +1289,23 @@ export default function Dashboard() {
             <Link href="/accounts">
               <button style={{
                 padding: "12px 24px",
-                background: "#f0f0f0",
-                color: "#333",
-                border: "none",
+                background: "var(--color-bg-secondary, #F8F9FA)",
+                color: "var(--color-text-primary, #111827)",
+                border: "1px solid var(--color-border, #E5E7EB)",
                 borderRadius: "8px",
                 fontSize: "14px",
                 fontWeight: "600",
-                cursor: "pointer"
+                cursor: "pointer",
+                fontFamily: "'Inter', sans-serif",
+                transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-primary, #4F46E5)";
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
+                e.currentTarget.style.transform = "translateY(0)";
               }}>
                 Gestionar Cuentas
               </button>
@@ -1268,13 +1313,23 @@ export default function Dashboard() {
             <Link href="/statistics">
               <button style={{
                 padding: "12px 24px",
-                background: "#f0f0f0",
-                color: "#333",
-                border: "none",
+                background: "var(--color-bg-secondary, #F8F9FA)",
+                color: "var(--color-text-primary, #111827)",
+                border: "1px solid var(--color-border, #E5E7EB)",
                 borderRadius: "8px",
                 fontSize: "14px",
                 fontWeight: "600",
-                cursor: "pointer"
+                cursor: "pointer",
+                fontFamily: "'Inter', sans-serif",
+                transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-primary, #4F46E5)";
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
+                e.currentTarget.style.transform = "translateY(0)";
               }}>
                 Ver Estadísticas
               </button>
@@ -1282,13 +1337,23 @@ export default function Dashboard() {
             <Link href="/savings">
               <button style={{
                 padding: "12px 24px",
-                background: "#f0f0f0",
-                color: "#333",
-                border: "none",
+                background: "var(--color-bg-secondary, #F8F9FA)",
+                color: "var(--color-text-primary, #111827)",
+                border: "1px solid var(--color-border, #E5E7EB)",
                 borderRadius: "8px",
                 fontSize: "14px",
                 fontWeight: "600",
-                cursor: "pointer"
+                cursor: "pointer",
+                fontFamily: "'Inter', sans-serif",
+                transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-primary, #4F46E5)";
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
+                e.currentTarget.style.transform = "translateY(0)";
               }}>
                 Ahorros
               </button>
@@ -1296,13 +1361,23 @@ export default function Dashboard() {
             <Link href="/transactions">
               <button style={{
                 padding: "12px 24px",
-                background: "#f0f0f0",
-                color: "#333",
-                border: "none",
+                background: "var(--color-bg-secondary, #F8F9FA)",
+                color: "var(--color-text-primary, #111827)",
+                border: "1px solid var(--color-border, #E5E7EB)",
                 borderRadius: "8px",
                 fontSize: "14px",
                 fontWeight: "600",
-                cursor: "pointer"
+                cursor: "pointer",
+                fontFamily: "'Inter', sans-serif",
+                transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-primary, #4F46E5)";
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
+                e.currentTarget.style.transform = "translateY(0)";
               }}>
                 Historial
               </button>
@@ -1312,15 +1387,25 @@ export default function Dashboard() {
               target="_blank"
               style={{
                 padding: "12px 24px",
-                background: "#f0f0f0",
-                color: "#333",
-                border: "none",
+                background: "var(--color-bg-secondary, #F8F9FA)",
+                color: "var(--color-text-primary, #111827)",
+                border: "1px solid var(--color-border, #E5E7EB)",
                 borderRadius: "8px",
                 fontSize: "14px",
                 fontWeight: "600",
                 cursor: "pointer",
                 textDecoration: "none",
-                display: "inline-block"
+                display: "inline-block",
+                fontFamily: "'Inter', sans-serif",
+                transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-primary, #4F46E5)";
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
+                e.currentTarget.style.transform = "translateY(0)";
               }}
             >
               Exportar CSV

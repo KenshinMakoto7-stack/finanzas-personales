@@ -29,6 +29,9 @@ export default function NewTransactionPage() {
   const [isPaid, setIsPaid] = useState(false);
   const [notifications, setNotifications] = useState<Array<{ date: string; time: string }>>([]);
   const [authReady, setAuthReady] = useState(false);
+  const [payInInstallments, setPayInInstallments] = useState(false);
+  const [numberOfInstallments, setNumberOfInstallments] = useState(1);
+  const [totalAmountForInstallments, setTotalAmountForInstallments] = useState("");
 
   const loadData = async () => {
     try {
@@ -139,6 +142,9 @@ export default function NewTransactionPage() {
         : occurredAt; // Usar el estado occurredAt del componente
       const occurredAtISO = new Date(finalDate).toISOString();
 
+      const selectedAccount = accounts.find(a => a.id === accountId);
+      const isCreditAccount = selectedAccount?.type === "CREDIT";
+      
       const payload: any = {
         accountId,
         categoryId,
@@ -150,6 +156,12 @@ export default function NewTransactionPage() {
         isRecurring: isRecurring,
         isPaid: isRecurring ? isPaid : false
       };
+      
+      // Si es cuenta de crédito y está en modo cuotas, agregar información de cuotas
+      if (isCreditAccount && type === "EXPENSE" && payInInstallments && numberOfInstallments > 1 && totalAmountForInstallments) {
+        payload.installments = numberOfInstallments;
+        payload.totalAmountCents = Math.round(Number(totalAmountForInstallments) * 100);
+      }
 
       if (isRecurring) {
         payload.recurringRule = JSON.stringify({ type: recurringType });
@@ -233,34 +245,35 @@ export default function NewTransactionPage() {
   return (
     <div style={{
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      background: "var(--color-bg-primary, #FAFBFC)",
       padding: "20px"
     }}>
       <div style={{ maxWidth: "600px", margin: "0 auto" }}>
         <div style={{
-          background: "white",
+          background: "var(--color-bg-white, #FFFFFF)",
           borderRadius: "20px",
-          boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+          boxShadow: "var(--shadow-xl, 0 20px 25px -5px rgba(0, 0, 0, 0.1))",
+          border: "1px solid var(--color-border-light, #F3F4F6)",
           padding: "40px"
         }}>
           <div style={{ marginBottom: "32px" }}>
             <Link href="/dashboard" style={{
-              color: "#667eea",
+              color: "var(--color-primary, #4F46E5)",
               textDecoration: "none",
               fontSize: "14px",
               fontWeight: "600",
               marginBottom: "16px",
-              display: "inline-block"
+              display: "inline-block",
+              fontFamily: "'Inter', sans-serif"
             }}>
               ← Volver al Dashboard
             </Link>
             <h1 style={{
               fontSize: "32px",
               fontWeight: "700",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              marginTop: "8px"
+              color: "var(--color-primary, #4F46E5)",
+              marginTop: "8px",
+              fontFamily: "'Inter', sans-serif"
             }}>
               Nueva Transacción
             </h1>
@@ -313,7 +326,13 @@ export default function NewTransactionPage() {
               onChange={(e) => {
                 const selected = accounts.find(a => a.id === e.target.value);
                 setAccountId(e.target.value);
-                if (selected) setCurrencyCode(selected.currencyCode || user.currencyCode || "USD");
+                if (selected) {
+                  setCurrencyCode(selected.currencyCode || user.currencyCode || "USD");
+                  // Si no es cuenta de crédito o no es gasto, desactivar cuotas
+                  if (selected.type !== "CREDIT" || type !== "EXPENSE") {
+                    setPayInInstallments(false);
+                  }
+                }
               }}
               required
               style={{
@@ -522,6 +541,10 @@ export default function NewTransactionPage() {
                 const val = e.target.value;
                 if (val === "" || (Number(val) > 0 && Number.isInteger(Number(val)))) {
                   setAmount(val);
+                  // Si está en modo cuotas, actualizar el monto total también
+                  if (payInInstallments && !totalAmountForInstallments) {
+                    setTotalAmountForInstallments(val);
+                  }
                 }
               }}
               required
@@ -537,6 +560,130 @@ export default function NewTransactionPage() {
               Ejemplo: 100 (se redondeará automáticamente, sin decimales)
             </small>
           </div>
+
+          {/* Formulario condicional para cuotas de tarjeta de crédito */}
+          {accountId && type === "EXPENSE" && accounts.find(a => a.id === accountId)?.type === "CREDIT" && (
+            <div style={{
+              marginBottom: "24px",
+              padding: "16px",
+              background: "#fff5f5",
+              borderRadius: "10px",
+              border: "2px solid #e74c3c"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                <span style={{ fontSize: "20px" }}>⚠️</span>
+                <span style={{ fontWeight: "600", fontSize: "14px", color: "#e74c3c" }}>
+                  Cuenta de Crédito detectada
+                </span>
+              </div>
+              
+              <label style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                color: "#333",
+                fontWeight: "600",
+                fontSize: "14px",
+                cursor: "pointer",
+                marginBottom: "12px"
+              }}>
+                <input
+                  type="checkbox"
+                  checked={payInInstallments}
+                  onChange={(e) => {
+                    setPayInInstallments(e.target.checked);
+                    if (!e.target.checked) {
+                      setNumberOfInstallments(1);
+                      setTotalAmountForInstallments("");
+                    } else if (!totalAmountForInstallments && amount) {
+                      setTotalAmountForInstallments(amount);
+                    }
+                  }}
+                  style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                />
+                Pagar en cuotas
+              </label>
+              
+              {payInInstallments && (
+                <>
+                  <div style={{ marginBottom: "12px" }}>
+                    <label style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      color: "#333",
+                      fontWeight: "600",
+                      fontSize: "14px"
+                    }}>
+                      Cantidad de cuotas *
+                    </label>
+                    <select
+                      value={numberOfInstallments}
+                      onChange={(e) => setNumberOfInstallments(Number(e.target.value))}
+                      style={{
+                        width: "100%",
+                        padding: "12px",
+                        border: "2px solid #e0e0e0",
+                        borderRadius: "8px",
+                        fontSize: "14px",
+                        background: "white",
+                        cursor: "pointer"
+                      }}
+                    >
+                      {Array.from({ length: 60 }, (_, i) => i + 1).map(num => (
+                        <option key={num} value={num}>{num} {num === 1 ? "cuota" : "cuotas"}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div style={{ marginBottom: "12px" }}>
+                    <label style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      color: "#333",
+                      fontWeight: "600",
+                      fontSize: "14px"
+                    }}>
+                      Monto total comprometido *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={totalAmountForInstallments}
+                      onChange={(e) => setTotalAmountForInstallments(e.target.value)}
+                      required={payInInstallments}
+                      style={{
+                        width: "100%",
+                        padding: "12px",
+                        border: "2px solid #e0e0e0",
+                        borderRadius: "8px",
+                        fontSize: "14px"
+                      }}
+                    />
+                  </div>
+                  
+                  {totalAmountForInstallments && numberOfInstallments > 1 && (
+                    <div style={{
+                      padding: "12px",
+                      background: "#e8f5e9",
+                      borderRadius: "8px",
+                      fontSize: "14px",
+                      color: "#2e7d32",
+                      fontWeight: "600"
+                    }}>
+                      Cuota mensual: {new Intl.NumberFormat(undefined, {
+                        style: "currency",
+                        currency: currencyCode,
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      }).format(Number(totalAmountForInstallments) / numberOfInstallments)}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           <div style={{ marginBottom: "24px" }}>
             <label htmlFor="transaction-date" style={{
@@ -820,7 +967,7 @@ export default function NewTransactionPage() {
             style={{
               width: "100%",
               padding: "14px",
-              background: loading || !accountId || !categoryId || !amount ? "#ccc" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              background: loading || !accountId || !categoryId || !amount ? "var(--color-border, #E5E7EB)" : "var(--color-primary, #4F46E5)",
               color: "white",
               border: "none",
               borderRadius: "10px",

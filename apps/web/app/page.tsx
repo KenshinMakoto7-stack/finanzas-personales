@@ -7,13 +7,14 @@ export default function Home() {
       display: "flex", 
       alignItems: "center", 
       justifyContent: "center",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      background: "var(--color-bg-primary, #FAFBFC)",
       padding: "20px"
     }}>
       <div style={{
-        background: "white",
+        background: "var(--color-bg-white, #FFFFFF)",
         borderRadius: "20px",
-        boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
+        boxShadow: "var(--shadow-xl, 0 20px 25px -5px rgba(0, 0, 0, 0.1))",
+        border: "1px solid var(--color-border-light, #F3F4F6)",
         padding: "60px 40px",
         maxWidth: "500px",
         width: "100%",
@@ -22,20 +23,19 @@ export default function Home() {
         <h1 style={{
           fontSize: "42px",
           fontWeight: "700",
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
+          color: "var(--color-primary, #4F46E5)",
+          fontFamily: "'Inter', sans-serif",
           marginBottom: "16px"
         }}>
           Finanzas Personales
         </h1>
-        <p style={{ color: "#666", fontSize: "18px", marginBottom: "32px" }}>
+        <p style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "18px", marginBottom: "32px" }}>
           Controla tu dinero día a día con un sistema claro de ingresos, metas de ahorro y presupuesto diario dinámico.
         </p>
         <div style={{ display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap" }}>
           <Link href="/login" style={{
             padding: "14px 32px",
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            background: "var(--color-primary, #4F46E5)",
             color: "white",
             textDecoration: "none",
             borderRadius: "10px",
@@ -47,13 +47,13 @@ export default function Home() {
           </Link>
           <Link href="/signup" style={{
             padding: "14px 32px",
-            background: "white",
-            color: "#667eea",
+            background: "var(--color-bg-white, #FFFFFF)",
+            color: "var(--color-primary, #4F46E5)",
             textDecoration: "none",
             borderRadius: "10px",
             fontSize: "16px",
             fontWeight: "600",
-            border: "2px solid #667eea",
+            border: "1px solid var(--color-primary, #4F46E5)",
             display: "inline-block"
           }}>
             Crear Cuenta

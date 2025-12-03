@@ -71,7 +71,7 @@ export default function StatisticsPage() {
   return (
     <div style={{
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      background: "var(--color-bg-primary, #FAFBFC)",
       padding: "20px"
     }}>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -95,7 +95,7 @@ export default function StatisticsPage() {
             <h1 style={{
               fontSize: "32px",
               fontWeight: "700",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              background: "var(--color-bg-primary, #FAFBFC)",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               marginTop: "8px"
@@ -124,8 +124,8 @@ export default function StatisticsPage() {
                 onClick={() => setActiveTab(tab.id as any)}
                 style={{
                   padding: "12px 24px",
-                  background: activeTab === tab.id ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" : "transparent",
-                  color: activeTab === tab.id ? "white" : "#666",
+                  background: activeTab === tab.id ? "var(--color-primary, #4F46E5)" : "transparent",
+                  color: activeTab === tab.id ? "white" : "var(--color-text-secondary, #6B7280)",
                   border: "none",
                   borderBottom: activeTab === tab.id ? "3px solid #764ba2" : "3px solid transparent",
                   borderRadius: "8px 8px 0 0",
@@ -250,7 +250,7 @@ export default function StatisticsPage() {
                             <div style={{
                               width: `${percentage}%`,
                               height: "100%",
-                              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                              background: "var(--color-bg-primary, #FAFBFC)",
                               transition: "width 0.3s"
                             }} />
                           </div>

@@ -108,7 +108,7 @@ export default function RecurringPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+        background: "var(--color-bg-primary, #FAFBFC)"
       }}>
         <div style={{
           background: "white",
@@ -128,7 +128,7 @@ export default function RecurringPage() {
   return (
     <div style={{
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      background: "var(--color-primary, #4F46E5)",
       padding: "20px"
     }}>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -158,7 +158,7 @@ export default function RecurringPage() {
             <h1 style={{
               fontSize: "28px",
               fontWeight: "700",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              background: "var(--color-bg-primary, #FAFBFC)",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               marginTop: "4px"
@@ -169,7 +169,7 @@ export default function RecurringPage() {
           <Link href="/transactions/new">
             <button style={{
               padding: "10px 20px",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              background: "var(--color-bg-primary, #FAFBFC)",
               color: "white",
               border: "none",
               borderRadius: "8px",
@@ -269,7 +269,7 @@ export default function RecurringPage() {
                               <div style={{
                                 width: `${progress}%`,
                                 height: "100%",
-                                background: progress >= 100 ? "#27ae60" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                                background: progress >= 100 ? "var(--color-income, #059669)" : "var(--color-primary, #4F46E5)",
                                 transition: "width 0.3s"
                               }} />
                             </div>

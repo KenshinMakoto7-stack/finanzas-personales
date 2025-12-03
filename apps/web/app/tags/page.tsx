@@ -85,17 +85,18 @@ export default function TagsPage() {
   return (
     <div style={{ 
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      background: "var(--color-bg-primary, #FAFBFC)",
       padding: "20px"
     }}>
       <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
         {/* Header */}
         <div style={{
-          background: "white",
-          borderRadius: "20px",
-          padding: "24px 32px",
-          marginBottom: "24px",
-          boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)",
+            background: "var(--color-bg-white, #FFFFFF)",
+            borderRadius: "20px",
+            padding: "24px 32px",
+            marginBottom: "24px",
+            boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+            border: "1px solid var(--color-border-light, #F3F4F6)",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -105,9 +106,8 @@ export default function TagsPage() {
           <h1 style={{
             fontSize: "28px",
             fontWeight: "700",
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent"
+            color: "var(--color-primary, #4F46E5)",
+            fontFamily: "'Inter', sans-serif"
           }}>
             Etiquetas (Tags)
           </h1>
@@ -122,8 +122,9 @@ export default function TagsPage() {
               }}
               style={{
                 padding: "10px 20px",
-                background: showForm ? "#f0f0f0" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                color: showForm ? "#333" : "white",
+                background: showForm ? "var(--color-bg-secondary, #F8F9FA)" : "var(--color-primary, #4F46E5)",
+                color: showForm ? "var(--color-text-primary, #111827)" : "white",
+                border: showForm ? "1px solid var(--color-border, #E5E7EB)" : "none",
                 border: "none",
                 borderRadius: "8px",
                 fontSize: "14px",
@@ -224,7 +225,7 @@ export default function TagsPage() {
                 type="submit"
                 style={{
                   padding: "12px 24px",
-                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  background: "var(--color-bg-primary, #FAFBFC)",
                   color: "white",
                   border: "none",
                   borderRadius: "8px",

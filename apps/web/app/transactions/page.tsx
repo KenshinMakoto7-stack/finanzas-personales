@@ -145,7 +145,7 @@ export default function TransactionsPage() {
   return (
     <div style={{ 
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      background: "var(--color-bg-primary, #FAFBFC)",
       padding: "20px"
     }}>
       <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
@@ -165,7 +165,7 @@ export default function TransactionsPage() {
           <h1 style={{
             fontSize: "28px",
             fontWeight: "700",
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            background: "var(--color-bg-primary, #FAFBFC)",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent"
           }}>
@@ -189,7 +189,7 @@ export default function TransactionsPage() {
             <Link href="/transactions/new">
               <button style={{
                 padding: "10px 20px",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: "var(--color-bg-primary, #FAFBFC)",
                 color: "white",
                 border: "none",
                 borderRadius: "8px",
@@ -544,8 +544,8 @@ export default function TransactionsPage() {
                   disabled={page === 1}
                   style={{
                     padding: "10px 20px",
-                    background: page === 1 ? "#e0e0e0" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                    color: page === 1 ? "#999" : "white",
+                    background: page === 1 ? "var(--color-border, #E5E7EB)" : "var(--color-primary, #4F46E5)",
+                    color: page === 1 ? "var(--color-text-tertiary, #9CA3AF)" : "white",
                     border: "none",
                     borderRadius: "8px",
                     fontSize: "14px",
@@ -563,7 +563,8 @@ export default function TransactionsPage() {
                   disabled={page >= Math.ceil(total / pageSize)}
                   style={{
                     padding: "10px 20px",
-                    background: page >= Math.ceil(total / pageSize) ? "#e0e0e0" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                    background: page >= Math.ceil(total / pageSize) ? "var(--color-border, #E5E7EB)" : "var(--color-primary, #4F46E5)",
+                    color: page >= Math.ceil(total / pageSize) ? "var(--color-text-secondary, #6B7280)" : "white",
                     color: page >= Math.ceil(total / pageSize) ? "#999" : "white",
                     border: "none",
                     borderRadius: "8px",
