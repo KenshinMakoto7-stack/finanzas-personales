@@ -93,7 +93,6 @@ export async function uploadAttachment(req: AuthRequest, res: Response) {
       metadata: { contentType: 'image/jpeg' }
     });
     await thumbnailFile.makePublic();
-    const bucketName = bucket.name;
     const thumbnailUrl = `https://storage.googleapis.com/${bucketName}/${thumbnailFilename}`;
     
     // Actualizar transacción con la nueva imagen

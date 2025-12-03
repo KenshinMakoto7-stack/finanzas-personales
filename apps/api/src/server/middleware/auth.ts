@@ -3,6 +3,14 @@ import { auth } from "../../lib/firebase.js";
 
 export interface AuthRequest extends Request {
   user?: { userId: string };
+  file?: {
+    fieldname: string;
+    originalname: string;
+    encoding: string;
+    mimetype: string;
+    size: number;
+    buffer: Buffer;
+  };
 }
 
 /**
