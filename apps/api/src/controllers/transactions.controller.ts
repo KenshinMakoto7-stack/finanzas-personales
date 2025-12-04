@@ -66,14 +66,20 @@ export async function listTransactions(req: AuthRequest, res: Response) {
 
     // Filtros de fecha
     if (from) {
-      const fromDate = new Date(from as string).getTime();
+      // Si solo viene la fecha (YYYY-MM-DD), incluir todo el día desde 00:00:00
+      const fromStr = from as string;
+      const fromDateStr = fromStr.includes('T') ? fromStr : `${fromStr}T00:00:00.000Z`;
+      const fromDate = new Date(fromDateStr).getTime();
       allTransactions = allTransactions.filter((tx: any) => {
         const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
         return txDate.getTime() >= fromDate;
       });
     }
     if (to) {
-      const toDate = new Date(to as string).getTime();
+      // Si solo viene la fecha (YYYY-MM-DD), incluir todo el día hasta 23:59:59.999
+      const toStr = to as string;
+      const toDateStr = toStr.includes('T') ? toStr : `${toStr}T23:59:59.999Z`;
+      const toDate = new Date(toDateStr).getTime();
       allTransactions = allTransactions.filter((tx: any) => {
         const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
         return txDate.getTime() <= toDate;
