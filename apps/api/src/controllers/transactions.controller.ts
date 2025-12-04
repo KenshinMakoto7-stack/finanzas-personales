@@ -164,6 +164,22 @@ export async function listTransactions(req: AuthRequest, res: Response) {
 
     // Aplicar paginación
     let transactions = allTransactions.slice(skip, skip + take);
+    
+    // Debug: Log para verificar filtros de fecha
+    if (from && to && from === to) {
+      const expenses = transactions.filter((t: any) => t.type === "EXPENSE" && !t.transferId);
+      console.log(`[DEBUG] Transacciones del día ${from}:`, {
+        total: transactions.length,
+        expenses: expenses.length,
+        expenseDetails: expenses.map((t: any) => ({
+          id: t.id,
+          description: t.description,
+          amountCents: t.amountCents,
+          currencyCode: t.currencyCode,
+          occurredAt: t.occurredAt
+        }))
+      });
+    }
 
     // Filtro por tag (post-procesamiento si no se puede hacer en query)
     if (tagId) {
