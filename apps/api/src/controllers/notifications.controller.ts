@@ -66,16 +66,25 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
     const notifications: any[] = [];
 
     // 1. Verificar transacciones recurrentes que deben ejecutarse hoy
+    // Obtener todas las transacciones del usuario y filtrar en memoria para evitar necesidad de índice compuesto
     const tomorrow = new Date(targetDate);
     tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowTimestamp = Timestamp.fromDate(tomorrow);
 
-    const recurringSnapshot = await db.collection("transactions")
+    const allUserTransactions = await db.collection("transactions")
       .where("userId", "==", userId)
-      .where("isRecurring", "==", true)
-      .where("nextOccurrence", "<=", Timestamp.fromDate(tomorrow))
       .get();
 
-    const recurringTransactions = recurringSnapshot.docs.map(doc => docToObject(doc));
+    // Filtrar en memoria: transacciones recurrentes con nextOccurrence <= tomorrow
+    const recurringTransactions = allUserTransactions.docs
+      .map(doc => docToObject(doc))
+      .filter((tx: any) => {
+        return tx.isRecurring === true && 
+               tx.nextOccurrence && 
+               (tx.nextOccurrence instanceof Timestamp 
+                 ? tx.nextOccurrence <= tomorrowTimestamp 
+                 : new Date(tx.nextOccurrence).getTime() <= tomorrow.getTime());
+      });
 
     // Cargar relaciones
     const categoryIds = [...new Set(recurringTransactions.map((t: any) => t.categoryId).filter(Boolean))];
