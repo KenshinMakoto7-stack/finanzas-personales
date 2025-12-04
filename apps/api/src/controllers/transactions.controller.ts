@@ -63,6 +63,37 @@ export async function listTransactions(req: AuthRequest, res: Response) {
       .get();
 
     let allTransactions = snapshot.docs.map(doc => docToObject(doc));
+    
+    // Debug: Log todas las transacciones antes de filtrar por fecha
+    if (from && to && from === to) {
+      console.log(`[DEBUG] Total transacciones del usuario (antes de filtros): ${allTransactions.length}`);
+      const dayTxsBeforeFilter = allTransactions.filter((tx: any) => {
+        const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
+        const txDateUTC = new Date(Date.UTC(
+          txDate.getUTCFullYear(),
+          txDate.getUTCMonth(),
+          txDate.getUTCDate(),
+          0, 0, 0, 0
+        ));
+        const targetDate = new Date(`${from}T00:00:00.000Z`);
+        const targetDateUTC = new Date(Date.UTC(
+          targetDate.getUTCFullYear(),
+          targetDate.getUTCMonth(),
+          targetDate.getUTCDate(),
+          0, 0, 0, 0
+        ));
+        return txDateUTC.getTime() === targetDateUTC.getTime();
+      });
+      console.log(`[DEBUG] Transacciones del día ${from} (antes de filtros):`, dayTxsBeforeFilter.map((t: any) => ({
+        id: t.id,
+        description: t.description,
+        type: t.type,
+        amountCents: t.amountCents,
+        currencyCode: t.currencyCode,
+        occurredAt: t.occurredAt,
+        occurredAtType: typeof t.occurredAt
+      })));
+    }
 
     // Filtros de fecha
     if (from) {
@@ -70,7 +101,7 @@ export async function listTransactions(req: AuthRequest, res: Response) {
       const fromStr = from as string;
       const fromDateStr = fromStr.includes('T') ? fromStr : `${fromStr}T00:00:00.000Z`;
       const fromDate = new Date(fromDateStr);
-      // Normalizar a UTC para comparación
+      // Normalizar a UTC para comparación - inicio del día
       const fromDateUTC = new Date(Date.UTC(
         fromDate.getUTCFullYear(),
         fromDate.getUTCMonth(),
@@ -79,17 +110,17 @@ export async function listTransactions(req: AuthRequest, res: Response) {
       ));
       const fromTime = fromDateUTC.getTime();
       
+      const beforeFilter = allTransactions.length;
       allTransactions = allTransactions.filter((tx: any) => {
         const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
-        // Normalizar fecha de transacción a UTC (solo año, mes, día)
-        const txDateUTC = new Date(Date.UTC(
-          txDate.getUTCFullYear(),
-          txDate.getUTCMonth(),
-          txDate.getUTCDate(),
-          0, 0, 0, 0
-        ));
-        return txDateUTC.getTime() >= fromTime;
+        // Comparar el timestamp real de la transacción con el inicio del día
+        return txDate.getTime() >= fromTime;
       });
+      
+      // Debug: Log para ver qué transacciones se excluyeron
+      if (from && to && from === to && beforeFilter !== allTransactions.length) {
+        console.log(`[DEBUG] Filtro 'from': ${beforeFilter} -> ${allTransactions.length} transacciones`);
+      }
     }
     if (to) {
       // Si solo viene la fecha (YYYY-MM-DD), incluir todo el día hasta 23:59:59.999
@@ -105,12 +136,40 @@ export async function listTransactions(req: AuthRequest, res: Response) {
       ));
       const toTime = toDateUTC.getTime();
       
+      const beforeFilter = allTransactions.length;
       allTransactions = allTransactions.filter((tx: any) => {
         const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
         // Comparar el timestamp real de la transacción (no normalizado) con el límite del día
         // Esto permite incluir todas las transacciones del día hasta 23:59:59.999
         return txDate.getTime() <= toTime;
       });
+      
+      // Debug: Log para ver qué transacciones se excluyeron
+      if (from && to && from === to && beforeFilter !== allTransactions.length) {
+        console.log(`[DEBUG] Filtro 'to': ${beforeFilter} -> ${allTransactions.length} transacciones`);
+        // Mostrar todas las transacciones del usuario para ese día
+        const allUserTxs = await db.collection("transactions")
+          .where("userId", "==", req.user!.userId)
+          .get();
+        const allTxs = allUserTxs.docs.map(doc => docToObject(doc));
+        const dayTxs = allTxs.filter((tx: any) => {
+          const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
+          const txDateUTC = new Date(Date.UTC(
+            txDate.getUTCFullYear(),
+            txDate.getUTCMonth(),
+            txDate.getUTCDate(),
+            0, 0, 0, 0
+          ));
+          return txDateUTC.getTime() === toDateUTC.getTime();
+        });
+        console.log(`[DEBUG] Todas las transacciones del día ${toStr}:`, dayTxs.map((t: any) => ({
+          id: t.id,
+          description: t.description,
+          type: t.type,
+          amountCents: t.amountCents,
+          occurredAt: t.occurredAt
+        })));
+      }
     }
 
     // Filtros básicos
