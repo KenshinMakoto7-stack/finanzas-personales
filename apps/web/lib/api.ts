@@ -3,7 +3,7 @@ import axios from "axios";
 const baseURL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const api = axios.create({ 
   baseURL,
-  timeout: 30000, // 30 segundos de timeout
+  timeout: 10000, // 10 segundos de timeout (reducido de 30s para mejor UX)
 });
 
 // Interceptor para manejar errores de conexión y timeout

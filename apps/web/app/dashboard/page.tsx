@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import api, { setAuthToken } from "../../lib/api";
 import { useAuth } from "../../store/auth";
 import { useRouter } from "next/navigation";
@@ -38,36 +38,15 @@ export default function Dashboard() {
   const [previousMonthData, setPreviousMonthData] = useState<any>(null);
   const [pendingRecurring, setPendingRecurring] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0); // Key para forzar recarga
+  const loadingRef = useRef(false); // Flag para prevenir llamadas duplicadas
 
-  // Detectar cuando la página gana foco (usuario vuelve de otra página)
-  useEffect(() => {
-    const handleFocus = () => {
-      // Recargar datos cuando la ventana gana foco (usuario vuelve de crear transacción)
-      if (user && token) {
-        loadData();
-      }
-    };
-    window.addEventListener("focus", handleFocus);
-    return () => window.removeEventListener("focus", handleFocus);
-  }, [user, token]);
-
-  useEffect(() => {
-    // Esperar a que Zustand rehidrate
-    if (!initialized) {
-      initAuth();
+  // Memoizar loadData para evitar recreaciones innecesarias y cumplir con reglas de hooks
+  const loadData = useCallback(async () => {
+    // Prevenir llamadas concurrentes
+    if (loadingRef.current) {
       return;
     }
-
-    if (!user || !token) {
-      router.push("/login");
-      return;
-    }
-
-    setAuthToken(token);
-    loadData();
-  }, [user, token, initialized, selectedDate, router, initAuth, refreshKey]);
-
-  async function loadData() {
+    loadingRef.current = true;
     setLoading(true);
     setError(undefined);
         try {
@@ -309,8 +288,8 @@ export default function Dashboard() {
         setPendingRecurring([]);
       }
 
-      const a = await api.get(`/alerts/preview?date=${dateStr}`);
-      // setAlerts(a.data.alerts);
+      // Alerts functionality not implemented yet
+      // await api.get(`/alerts/preview?date=${dateStr}`);
     } catch (err: any) {
       setError(err?.response?.data?.error ?? "Error al cargar los datos");
       if (err?.response?.status === 401) {
@@ -319,8 +298,37 @@ export default function Dashboard() {
       }
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
-  }
+  }, [selectedDate, user, logout, router]); // Dependencias correctas de loadData
+
+  // Detectar cuando la página gana foco (usuario vuelve de otra página)
+  useEffect(() => {
+    const handleFocus = () => {
+      // Recargar datos cuando la ventana gana foco (usuario vuelve de crear transacción)
+      if (user && token) {
+        loadData();
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [user, token, loadData]);
+
+  useEffect(() => {
+    // Esperar a que Zustand rehidrate
+    if (!initialized) {
+      initAuth();
+      return;
+    }
+
+    if (!user || !token) {
+      router.push("/login");
+      return;
+    }
+
+    setAuthToken(token);
+    loadData();
+  }, [user, token, initialized, selectedDate, router, initAuth, refreshKey, loadData]);
 
   if (!user) return null;
 

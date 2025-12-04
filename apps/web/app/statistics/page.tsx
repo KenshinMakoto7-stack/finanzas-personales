@@ -35,8 +35,37 @@ export default function StatisticsPage() {
     }
 
     setAuthToken(token);
-    loadData();
+    // Cargar datos de la pestaña activa (carga lazy - solo cuando es necesario)
+    loadDataForActiveTab();
   }, [user, token, initialized, router, period, year, month, activeTab, initAuth]);
+
+  async function loadDataForActiveTab() {
+    // Solo cargar la pestaña activa, no todas las pestañas
+    // Esto reduce las llamadas API iniciales
+    setLoading(true);
+    try {
+      if (activeTab === "expenses") {
+        const res = await api.get(`/statistics/expenses-by-category?year=${year}&month=${month}&period=${period}`);
+        setExpensesData(res.data);
+      } else if (activeTab === "savings") {
+        const res = await api.get(`/statistics/savings?year=${year}`);
+        setSavingsData(res.data);
+      } else if (activeTab === "income") {
+        const res = await api.get(`/statistics/income?year=${year}`);
+        setIncomeData(res.data);
+      } else if (activeTab === "fixed") {
+        const res = await api.get("/statistics/fixed-costs");
+        setFixedCostsData(res.data);
+      } else if (activeTab === "ai") {
+        const res = await api.get("/statistics/ai-insights");
+        setAiInsights(res.data);
+      }
+    } catch (err: any) {
+      console.error("Error loading statistics:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function loadData() {
     setLoading(true);

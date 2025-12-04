@@ -45,7 +45,7 @@ export default function DebtsPage() {
     totalInstallments: "",
     paidInstallments: "0",
     startMonth: new Date().toISOString().slice(0, 7), // YYYY-MM
-    currencyCode: user?.currencyCode || "USD"
+    currencyCode: "USD" // Se actualizará cuando user esté disponible
   });
 
   useEffect(() => {
@@ -60,6 +60,10 @@ export default function DebtsPage() {
     }
 
     setAuthToken(token);
+    // Actualizar currencyCode cuando user esté disponible
+    if (user?.currencyCode && formData.currencyCode !== user.currencyCode) {
+      setFormData(prev => ({ ...prev, currencyCode: user.currencyCode }));
+    }
     loadData();
   }, [user, token, initialized, router, initAuth]);
 
@@ -626,8 +630,6 @@ export default function DebtsPage() {
                   background: debtTypeFilter === "ALL" ? "var(--color-primary, #4F46E5)" : "var(--color-bg-secondary, #F8F9FA)",
                   color: debtTypeFilter === "ALL" ? "white" : "var(--color-text-primary, #111827)",
                   border: debtTypeFilter === "ALL" ? "none" : "1px solid var(--color-border, #E5E7EB)",
-                  color: debtTypeFilter === "ALL" ? "white" : "#333",
-                  border: "none",
                   borderRadius: "6px",
                   fontSize: "12px",
                   fontWeight: "600",
@@ -643,8 +645,6 @@ export default function DebtsPage() {
                   background: debtTypeFilter === "CREDIT" ? "var(--color-primary, #4F46E5)" : "var(--color-bg-secondary, #F8F9FA)",
                   color: debtTypeFilter === "CREDIT" ? "white" : "var(--color-text-primary, #111827)",
                   border: debtTypeFilter === "CREDIT" ? "none" : "1px solid var(--color-border, #E5E7EB)",
-                  color: debtTypeFilter === "CREDIT" ? "white" : "#333",
-                  border: "none",
                   borderRadius: "6px",
                   fontSize: "12px",
                   fontWeight: "600",
@@ -660,8 +660,6 @@ export default function DebtsPage() {
                   background: debtTypeFilter === "OTHER" ? "var(--color-primary, #4F46E5)" : "var(--color-bg-secondary, #F8F9FA)",
                   color: debtTypeFilter === "OTHER" ? "white" : "var(--color-text-primary, #111827)",
                   border: debtTypeFilter === "OTHER" ? "none" : "1px solid var(--color-border, #E5E7EB)",
-                  color: debtTypeFilter === "OTHER" ? "white" : "#333",
-                  border: "none",
                   borderRadius: "6px",
                   fontSize: "12px",
                   fontWeight: "600",
@@ -680,8 +678,6 @@ export default function DebtsPage() {
                   background: debtStatusFilter === "ALL" ? "var(--color-primary, #4F46E5)" : "var(--color-bg-secondary, #F8F9FA)",
                   color: debtStatusFilter === "ALL" ? "white" : "var(--color-text-primary, #111827)",
                   border: debtStatusFilter === "ALL" ? "none" : "1px solid var(--color-border, #E5E7EB)",
-                  color: debtStatusFilter === "ALL" ? "white" : "#333",
-                  border: "none",
                   borderRadius: "6px",
                   fontSize: "12px",
                   fontWeight: "600",
@@ -697,8 +693,6 @@ export default function DebtsPage() {
                   background: debtStatusFilter === "ACTIVE" ? "var(--color-primary, #4F46E5)" : "var(--color-bg-secondary, #F8F9FA)",
                   color: debtStatusFilter === "ACTIVE" ? "white" : "var(--color-text-primary, #111827)",
                   border: debtStatusFilter === "ACTIVE" ? "none" : "1px solid var(--color-border, #E5E7EB)",
-                  color: debtStatusFilter === "ACTIVE" ? "white" : "#333",
-                  border: "none",
                   borderRadius: "6px",
                   fontSize: "12px",
                   fontWeight: "600",
@@ -714,8 +708,6 @@ export default function DebtsPage() {
                   background: debtStatusFilter === "COMPLETED" ? "var(--color-primary, #4F46E5)" : "var(--color-bg-secondary, #F8F9FA)",
                   color: debtStatusFilter === "COMPLETED" ? "white" : "var(--color-text-primary, #111827)",
                   border: debtStatusFilter === "COMPLETED" ? "none" : "1px solid var(--color-border, #E5E7EB)",
-                  color: debtStatusFilter === "COMPLETED" ? "white" : "#333",
-                  border: "none",
                   borderRadius: "6px",
                   fontSize: "12px",
                   fontWeight: "600",

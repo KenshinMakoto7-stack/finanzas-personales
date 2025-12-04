@@ -37,7 +37,6 @@ export default function NewTransactionPage() {
   const [recurringOccurrences, setRecurringOccurrences] = useState<number | "indefinite">("indefinite");
   const [isPaid, setIsPaid] = useState(false);
   const [notifications, setNotifications] = useState<Array<{ date: string; time: string }>>([]);
-  const [authReady, setAuthReady] = useState(false);
   const [payInInstallments, setPayInInstallments] = useState(false);
   const [numberOfInstallments, setNumberOfInstallments] = useState(1);
   const [totalAmountForInstallments, setTotalAmountForInstallments] = useState("");
@@ -73,7 +72,6 @@ export default function NewTransactionPage() {
     }
 
     setAuthToken(token);
-    setAuthReady(true);
     setCurrencyCode(user.currencyCode || "USD");
 
     // Leer parámetros de URL para prellenar campos (después de cargar datos)
@@ -213,12 +211,8 @@ export default function NewTransactionPage() {
       setRecurringOccurrences("indefinite");
       setNotifications([]);
       setTimeout(() => {
-        // Forzar recarga del dashboard agregando timestamp a la URL
-        router.push("/dashboard?refresh=" + Date.now());
-        // También recargar la página para asegurar que los datos se actualicen
-        setTimeout(() => {
-          window.location.reload();
-        }, 100);
+        // Navegar al dashboard - el sistema de recarga automática (focus listener) actualizará los datos
+        router.push("/dashboard");
       }, 1500);
     } catch (err: any) {
       const errorData = err?.response?.data?.error;
