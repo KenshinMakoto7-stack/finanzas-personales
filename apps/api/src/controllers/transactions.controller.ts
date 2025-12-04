@@ -66,9 +66,14 @@ export async function listTransactions(req: AuthRequest, res: Response) {
     
     // Debug: Log todas las transacciones antes de filtrar por fecha
     if (from && to && from === to) {
-      console.log(`[DEBUG] Total transacciones del usuario (antes de filtros): ${allTransactions.length}`);
-      const dayTxsBeforeFilter = allTransactions.filter((tx: any) => {
+      console.log(`[DEBUG FILTRO FECHAS] Total transacciones del usuario (antes de filtros): ${allTransactions.length}`);
+      console.log(`[DEBUG FILTRO FECHAS] Parámetros: from=${from}, to=${to}`);
+      
+      // Mostrar todas las transacciones del día sin importar filtros
+      const allDayTxs = allTransactions.filter((tx: any) => {
+        if (!tx.occurredAt) return false;
         const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
+        if (isNaN(txDate.getTime())) return false;
         const txDateUTC = new Date(Date.UTC(
           txDate.getUTCFullYear(),
           txDate.getUTCMonth(),
@@ -84,15 +89,12 @@ export async function listTransactions(req: AuthRequest, res: Response) {
         ));
         return txDateUTC.getTime() === targetDateUTC.getTime();
       });
-      console.log(`[DEBUG] Transacciones del día ${from} (antes de filtros):`, dayTxsBeforeFilter.map((t: any) => ({
-        id: t.id,
-        description: t.description,
-        type: t.type,
-        amountCents: t.amountCents,
-        currencyCode: t.currencyCode,
-        occurredAt: t.occurredAt,
-        occurredAtType: typeof t.occurredAt
-      })));
+      
+      console.log(`[DEBUG FILTRO FECHAS] Transacciones del día ${from} (antes de filtros): ${allDayTxs.length}`);
+      allDayTxs.forEach((t: any) => {
+        const occurredAtStr = t.occurredAt ? (t.occurredAt instanceof Date ? t.occurredAt.toISOString() : new Date(t.occurredAt).toISOString()) : 'null';
+        console.log(`[DEBUG FILTRO FECHAS] - ${t.type} | ${t.description || 'Sin descripción'} | ${t.amountCents} ${t.currencyCode} | ${occurredAtStr}`);
+      });
     }
 
     // Filtros de fecha
