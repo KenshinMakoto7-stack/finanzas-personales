@@ -69,20 +69,52 @@ export async function listTransactions(req: AuthRequest, res: Response) {
       // Si solo viene la fecha (YYYY-MM-DD), incluir todo el día desde 00:00:00
       const fromStr = from as string;
       const fromDateStr = fromStr.includes('T') ? fromStr : `${fromStr}T00:00:00.000Z`;
-      const fromDate = new Date(fromDateStr).getTime();
+      const fromDate = new Date(fromDateStr);
+      // Normalizar a UTC para comparación
+      const fromDateUTC = new Date(Date.UTC(
+        fromDate.getUTCFullYear(),
+        fromDate.getUTCMonth(),
+        fromDate.getUTCDate(),
+        0, 0, 0, 0
+      ));
+      const fromTime = fromDateUTC.getTime();
+      
       allTransactions = allTransactions.filter((tx: any) => {
         const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
-        return txDate.getTime() >= fromDate;
+        // Normalizar fecha de transacción a UTC (solo año, mes, día)
+        const txDateUTC = new Date(Date.UTC(
+          txDate.getUTCFullYear(),
+          txDate.getUTCMonth(),
+          txDate.getUTCDate(),
+          0, 0, 0, 0
+        ));
+        return txDateUTC.getTime() >= fromTime;
       });
     }
     if (to) {
       // Si solo viene la fecha (YYYY-MM-DD), incluir todo el día hasta 23:59:59.999
       const toStr = to as string;
       const toDateStr = toStr.includes('T') ? toStr : `${toStr}T23:59:59.999Z`;
-      const toDate = new Date(toDateStr).getTime();
+      const toDate = new Date(toDateStr);
+      // Normalizar a UTC para comparación
+      const toDateUTC = new Date(Date.UTC(
+        toDate.getUTCFullYear(),
+        toDate.getUTCMonth(),
+        toDate.getUTCDate(),
+        23, 59, 59, 999
+      ));
+      const toTime = toDateUTC.getTime();
+      
       allTransactions = allTransactions.filter((tx: any) => {
         const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
-        return txDate.getTime() <= toDate;
+        // Normalizar fecha de transacción a UTC (solo año, mes, día)
+        const txDateUTC = new Date(Date.UTC(
+          txDate.getUTCFullYear(),
+          txDate.getUTCMonth(),
+          txDate.getUTCDate(),
+          23, 59, 59, 999
+        ));
+        return txDateUTC.getTime() <= toTime;
       });
     }
 
@@ -226,7 +258,8 @@ export async function createTransaction(req: AuthRequest, res: Response) {
       return res.status(400).json({ error: `Error de validación: ${errors}` });
     }
 
-    const { accountId, categoryId, type, amountCents, currencyCode, occurredAt, description, isRecurring, recurringRule, nextOccurrence, toAccountId } = parsed.data;
+    const { accountId, categoryId, type, amountCents, currencyCode, occurredAt, description, isRecurring, recurringRule, nextOccurrence } = parsed.data;
+    const toAccountId = (parsed.data as any).toAccountId;
     const notificationSchedule = (req.body as any).notificationSchedule ? JSON.stringify((req.body as any).notificationSchedule) : null;
     const isPaid = (req.body as any).isPaid || false;
     const totalOccurrences = (req.body as any).totalOccurrences !== undefined ? (req.body as any).totalOccurrences : null;
