@@ -96,7 +96,7 @@ export async function listTransactions(req: AuthRequest, res: Response) {
       const toStr = to as string;
       const toDateStr = toStr.includes('T') ? toStr : `${toStr}T23:59:59.999Z`;
       const toDate = new Date(toDateStr);
-      // Normalizar a UTC para comparación
+      // Normalizar a UTC para comparación (usar fin del día para el límite)
       const toDateUTC = new Date(Date.UTC(
         toDate.getUTCFullYear(),
         toDate.getUTCMonth(),
@@ -107,14 +107,9 @@ export async function listTransactions(req: AuthRequest, res: Response) {
       
       allTransactions = allTransactions.filter((tx: any) => {
         const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
-        // Normalizar fecha de transacción a UTC (solo año, mes, día)
-        const txDateUTC = new Date(Date.UTC(
-          txDate.getUTCFullYear(),
-          txDate.getUTCMonth(),
-          txDate.getUTCDate(),
-          23, 59, 59, 999
-        ));
-        return txDateUTC.getTime() <= toTime;
+        // Comparar el timestamp real de la transacción (no normalizado) con el límite del día
+        // Esto permite incluir todas las transacciones del día hasta 23:59:59.999
+        return txDate.getTime() <= toTime;
       });
     }
 
