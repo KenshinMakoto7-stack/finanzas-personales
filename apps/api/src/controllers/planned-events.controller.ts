@@ -13,9 +13,12 @@ export async function listPlannedEvents(req: AuthRequest, res: Response) {
     const userId = req.user!.userId;
     const { month, year } = req.query;
     
+    // Obtener todos los eventos del usuario y filtrar en memoria para evitar índice compuesto
     let query = db.collection("plannedEvents")
-      .where("userId", "==", userId)
-      .orderBy("scheduledDate", "asc");
+      .where("userId", "==", userId);
+    
+    const snapshot = await query.get();
+    let events = snapshot.docs.map(doc => docToObject(doc));
     
     // Filtrar por mes/año si se proporciona
     if (month && year) {
@@ -23,14 +26,22 @@ export async function listPlannedEvents(req: AuthRequest, res: Response) {
       const yearNum = parseInt(year as string);
       const startDate = new Date(Date.UTC(yearNum, monthNum - 1, 1));
       const endDate = new Date(Date.UTC(yearNum, monthNum, 0, 23, 59, 59));
+      const startTime = startDate.getTime();
+      const endTime = endDate.getTime();
       
-      query = query
-        .where("scheduledDate", ">=", Timestamp.fromDate(startDate))
-        .where("scheduledDate", "<=", Timestamp.fromDate(endDate));
+      events = events.filter((event: any) => {
+        const eventDate = event.scheduledDate?.toDate ? event.scheduledDate.toDate() : new Date(event.scheduledDate);
+        const eventTime = eventDate.getTime();
+        return eventTime >= startTime && eventTime <= endTime;
+      });
     }
     
-    const snapshot = await query.get();
-    const events = snapshot.docs.map(doc => docToObject(doc));
+    // Ordenar por fecha
+    events.sort((a: any, b: any) => {
+      const dateA = a.scheduledDate?.toDate ? a.scheduledDate.toDate() : new Date(a.scheduledDate);
+      const dateB = b.scheduledDate?.toDate ? b.scheduledDate.toDate() : new Date(b.scheduledDate);
+      return dateA.getTime() - dateB.getTime();
+    });
     
     res.json({ events });
   } catch (error: any) {
