@@ -36,6 +36,9 @@ export default function DebtsPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentAccountId, setPaymentAccountId] = useState("");
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [exchangeRate, setExchangeRate] = useState<number | null>(null);
+  const [convertedAmount, setConvertedAmount] = useState<number | null>(null);
+  const [showExchangeConfirmation, setShowExchangeConfirmation] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -89,18 +92,65 @@ export default function DebtsPage() {
     }
   }
   
-  const handleMarkAsPaid = (debt: any) => {
+  const checkExchangeRate = async (debt: any, account: any) => {
+    try {
+      const res = await api.get("/exchange/rate");
+      const rate = res.data.rate;
+      setExchangeRate(rate);
+      
+      // Calcular monto convertido
+      const debtAmount = debt.monthlyPaymentCents / 100;
+      let converted: number;
+      if (debt.currencyCode === "USD" && account.currencyCode === "UYU") {
+        converted = debtAmount * rate;
+      } else if (debt.currencyCode === "UYU" && account.currencyCode === "USD") {
+        converted = debtAmount / rate;
+      } else {
+        converted = debtAmount; // Misma moneda o no soportada
+      }
+      setConvertedAmount(converted);
+    } catch (err) {
+      console.error("Error obteniendo tipo de cambio:", err);
+      setExchangeRate(null);
+      setConvertedAmount(null);
+    }
+  };
+
+  const handleMarkAsPaid = async (debt: any) => {
     setSelectedDebt(debt);
     setPaymentAmount((debt.monthlyPaymentCents / 100).toFixed(2));
     setPaymentAccountId(accounts.length > 0 ? accounts[0].id : "");
+    setExchangeRate(null);
+    setConvertedAmount(null);
+    setShowExchangeConfirmation(false);
     setShowMarkPaidModal(true);
+    
+    // Si hay cuenta seleccionada, verificar si necesita conversión
+    if (accounts.length > 0) {
+      const selectedAccount = accounts[0];
+      if (selectedAccount.currencyCode !== debt.currencyCode) {
+        await checkExchangeRate(debt, selectedAccount);
+      }
+    }
   };
   
   const confirmMarkAsPaid = async () => {
     if (!selectedDebt) return;
     
+    // Si hay conversión de moneda y no se ha confirmado, mostrar confirmación
+    if (exchangeRate && convertedAmount !== null && !showExchangeConfirmation) {
+      setShowExchangeConfirmation(true);
+      return;
+    }
+    
     try {
-      const amountCents = Math.round(Number(paymentAmount) * 100);
+      const selectedAccount = accounts.find(acc => acc.id === paymentAccountId);
+      const needsConversion = selectedAccount && selectedAccount.currencyCode !== selectedDebt.currencyCode;
+      
+      // El monto a enviar es el que se pagará de la cuenta (convertido si aplica)
+      const amountCents = needsConversion && convertedAmount !== null
+        ? Math.round(convertedAmount * 100)
+        : Math.round(Number(paymentAmount) * 100);
       
       // Normalizar la fecha actual al inicio del día en UTC para evitar problemas de zona horaria
       const now = new Date();
@@ -111,16 +161,29 @@ export default function DebtsPage() {
         0, 0, 0, 0
       ));
       
-      await api.post(`/debts/${selectedDebt.id}/mark-paid`, {
+      const payload: any = {
         amountCents,
         accountId: paymentAccountId || undefined,
-        occurredAt: normalizedDate.toISOString()
-      });
+        occurredAt: normalizedDate.toISOString(),
+        currencyCode: selectedAccount?.currencyCode || selectedDebt.currencyCode
+      };
+      
+      // Si hay conversión, enviar información de auditoría
+      if (needsConversion && exchangeRate) {
+        payload.exchangeRate = exchangeRate;
+        payload.originalAmountCents = Math.round(Number(paymentAmount) * 100);
+        payload.originalCurrencyCode = selectedDebt.currencyCode;
+      }
+      
+      await api.post(`/debts/${selectedDebt.id}/mark-paid`, payload);
       
       setShowMarkPaidModal(false);
       setSelectedDebt(null);
       setPaymentAmount("");
       setPaymentAccountId("");
+      setExchangeRate(null);
+      setConvertedAmount(null);
+      setShowExchangeConfirmation(false);
       loadData();
     } catch (err: any) {
       setError(err?.response?.data?.error || "Error al registrar el pago");
@@ -363,7 +426,7 @@ export default function DebtsPage() {
             <div>
               <div style={{ fontSize: "14px", color: "#666", marginBottom: "4px" }}>Total Mensual</div>
               <div className="secondary-number" style={{ color: "var(--color-expense, #B45309)" }}>
-                {fmtMoney(statistics.totalMonthlyPayment, user?.currencyCode || "USD")}
+                {fmtMoney(statistics.totalMonthlyPayment, statistics.baseCurrency || user?.currencyCode || "USD")}
               </div>
             </div>
             <div>
@@ -406,7 +469,7 @@ export default function DebtsPage() {
               <div>
                 <div style={{ fontSize: "14px", color: "#666", marginBottom: "4px" }}>Liberación Estimada</div>
                 <div className="secondary-number" style={{ color: "var(--color-income, #059669)" }}>
-                  {new Date(statistics.latestEndDate).toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })}
+                  {fmtDateUTC(statistics.latestEndDate)}
                 </div>
               </div>
             )}
@@ -1004,7 +1067,17 @@ export default function DebtsPage() {
                 </label>
                 <select
                   value={paymentAccountId}
-                  onChange={(e) => setPaymentAccountId(e.target.value)}
+                  onChange={async (e) => {
+                    setPaymentAccountId(e.target.value);
+                    const selectedAccount = accounts.find(acc => acc.id === e.target.value);
+                    if (selectedAccount && selectedDebt && selectedAccount.currencyCode !== selectedDebt.currencyCode) {
+                      await checkExchangeRate(selectedDebt, selectedAccount);
+                    } else {
+                      setExchangeRate(null);
+                      setConvertedAmount(null);
+                      setShowExchangeConfirmation(false);
+                    }
+                  }}
                   style={{
                     width: "100%",
                     padding: "12px",
@@ -1023,6 +1096,63 @@ export default function DebtsPage() {
                 </select>
               </div>
               
+              {/* Mostrar información de conversión si aplica */}
+              {exchangeRate && convertedAmount !== null && selectedDebt && (
+                <div style={{
+                  padding: "12px",
+                  background: "#fff3cd",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  color: "#856404",
+                  marginBottom: "16px",
+                  border: "1px solid #ffc107"
+                }}>
+                  <div style={{ marginBottom: "8px", fontWeight: "600" }}>
+                    💱 Conversión de Moneda
+                  </div>
+                  <div style={{ marginBottom: "4px" }}>
+                    <strong>Monto original:</strong> {fmtMoney(selectedDebt.monthlyPaymentCents, selectedDebt.currencyCode)}
+                  </div>
+                  <div style={{ marginBottom: "4px" }}>
+                    <strong>Tipo de cambio:</strong> {exchangeRate.toFixed(2)} ({selectedDebt.currencyCode} → {accounts.find(acc => acc.id === paymentAccountId)?.currencyCode})
+                  </div>
+                  <div style={{ marginBottom: "4px", fontWeight: "600", color: "#d32f2f" }}>
+                    <strong>Monto a pagar:</strong> {fmtMoney(Math.round(convertedAmount * 100), accounts.find(acc => acc.id === paymentAccountId)?.currencyCode || selectedDebt.currencyCode)}
+                  </div>
+                  {!showExchangeConfirmation && (
+                    <div style={{ marginTop: "8px", fontSize: "12px", fontStyle: "italic" }}>
+                      ⚠️ Se descontará el monto convertido de tu cuenta. La deuda se registrará en su moneda original ({selectedDebt.currencyCode}).
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Confirmación de conversión */}
+              {showExchangeConfirmation && exchangeRate && convertedAmount !== null && (
+                <div style={{
+                  padding: "12px",
+                  background: "#ffebee",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  color: "#c62828",
+                  marginBottom: "16px",
+                  border: "1px solid #f44336"
+                }}>
+                  <div style={{ marginBottom: "8px", fontWeight: "600" }}>
+                    ⚠️ Confirmar Conversión de Moneda
+                  </div>
+                  <div style={{ marginBottom: "4px" }}>
+                    Se descontarán <strong>{fmtMoney(Math.round(convertedAmount * 100), accounts.find(acc => acc.id === paymentAccountId)?.currencyCode || "UYU")}</strong> de tu cuenta.
+                  </div>
+                  <div style={{ marginBottom: "4px" }}>
+                    La deuda se registrará como pago de <strong>{fmtMoney(selectedDebt.monthlyPaymentCents, selectedDebt.currencyCode)}</strong>.
+                  </div>
+                  <div style={{ fontSize: "12px", fontStyle: "italic", marginTop: "8px" }}>
+                    Tipo de cambio usado: {exchangeRate.toFixed(2)}
+                  </div>
+                </div>
+              )}
+              
               <div style={{
                 padding: "12px",
                 background: "#e8f5e9",
@@ -1040,7 +1170,7 @@ export default function DebtsPage() {
                   style={{
                     flex: 1,
                     padding: "12px 24px",
-                    background: "#27ae60",
+                    background: showExchangeConfirmation ? "#d32f2f" : "#27ae60",
                     color: "white",
                     border: "none",
                     borderRadius: "8px",
@@ -1049,7 +1179,7 @@ export default function DebtsPage() {
                     cursor: "pointer"
                   }}
                 >
-                  Confirmar Pago
+                  {showExchangeConfirmation ? "Confirmar con Conversión" : "Confirmar Pago"}
                 </button>
                 <button
                   onClick={() => {
@@ -1057,6 +1187,9 @@ export default function DebtsPage() {
                     setSelectedDebt(null);
                     setPaymentAmount("");
                     setPaymentAccountId("");
+                    setExchangeRate(null);
+                    setConvertedAmount(null);
+                    setShowExchangeConfirmation(false);
                   }}
                   style={{
                     flex: 1,

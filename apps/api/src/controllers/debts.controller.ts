@@ -4,6 +4,7 @@ import { AuthRequest } from "../server/middleware/auth.js";
 import { monthAnchorUTC } from "../lib/time.js";
 import { objectToFirestore, docToObject } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { getExchangeRatesMap, convertAmountWithRate } from "../services/exchange.service.js";
 
 // Función auxiliar para obtener o crear la categoría "Deudas"
 async function getOrCreateDebtsCategory(userId: string) {
@@ -515,6 +516,14 @@ export async function markDebtAsPaid(req: AuthRequest, res: Response) {
 
 export async function getDebtStatistics(req: AuthRequest, res: Response) {
   try {
+    // Obtener moneda base del usuario
+    const userDoc = await db.collection("users").doc(req.user!.userId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+    const userData = userDoc.data()!;
+    const baseCurrency = userData.currencyCode || "UYU";
+
     const snapshot = await db.collection("debts")
       .where("userId", "==", req.user!.userId)
       .get();
@@ -523,6 +532,18 @@ export async function getDebtStatistics(req: AuthRequest, res: Response) {
 
     const now = new Date();
     const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Obtener tipos de cambio para todas las monedas de las deudas activas
+    const activeDebtsCurrencies = debts
+      .filter((debt: any) => {
+        const remainingInstallments = debt.totalInstallments - debt.paidInstallments;
+        return remainingInstallments > 0;
+      })
+      .map((debt: any) => debt.currencyCode || "USD")
+      .filter((c: string) => c && c !== baseCurrency);
+    
+    const uniqueCurrencies = [...new Set(activeDebtsCurrencies)];
+    const rateMap = await getExchangeRatesMap(uniqueCurrencies, baseCurrency);
 
     let totalMonthlyPayment = 0;
     let totalRemainingMonths = 0;
@@ -551,7 +572,15 @@ export async function getDebtStatistics(req: AuthRequest, res: Response) {
       
       if (!isCompleted && remainingInstallments > 0) {
         activeDebts++;
-        totalMonthlyPayment += debt.monthlyPaymentCents;
+        // Convertir monthlyPaymentCents a moneda base antes de sumar
+        const debtCurrency = debt.currencyCode || "USD";
+        const convertedMonthlyPayment = convertAmountWithRate(
+          debt.monthlyPaymentCents,
+          debtCurrency,
+          baseCurrency,
+          rateMap
+        );
+        totalMonthlyPayment += convertedMonthlyPayment;
         
         // Calcular cuándo termina esta deuda usando UTC correctamente
         const startDate = debt.startMonth instanceof Date ? debt.startMonth : new Date(debt.startMonth);
@@ -637,12 +666,13 @@ export async function getDebtStatistics(req: AuthRequest, res: Response) {
 
     res.json({
       // Estadísticas existentes
-      totalMonthlyPayment,
+      totalMonthlyPayment, // Ya convertido a moneda base
       averageDuration: Math.round(averageDuration * 10) / 10,
       averageTotalDuration: Math.round(averageTotalDuration * 10) / 10, // Duración total promedio (promedio de totalInstallments)
       activeDebts,
       latestEndDate: latestEndDateISO,
       totalDebts: debts.length,
+      baseCurrency, // Incluir moneda base para que el frontend sepa en qué moneda está el total
       
       // Nuevas estadísticas de comportamiento
       completedDebts,
