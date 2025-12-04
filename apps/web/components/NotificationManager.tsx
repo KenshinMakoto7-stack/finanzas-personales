@@ -143,18 +143,40 @@ export default function NotificationManager() {
   }
 
   const [dismissed, setDismissed] = useState(false);
+  const [showPopup, setShowPopup] = useState(false);
 
   useEffect(() => {
     const wasDismissed = localStorage.getItem("notif-popup-dismissed");
-    if (wasDismissed) setDismissed(true);
-  }, []);
+    if (wasDismissed) {
+      setDismissed(true);
+      setShowPopup(false);
+    } else {
+      // Mostrar popup después de un pequeño delay para asegurar que el componente esté montado
+      const timer = setTimeout(() => {
+        if (permission === "default") {
+          setShowPopup(true);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [permission]);
+
+  useEffect(() => {
+    // Mantener el popup visible mientras permission sea "default" y no esté dismissed
+    if (permission === "default" && !dismissed) {
+      setShowPopup(true);
+    } else {
+      setShowPopup(false);
+    }
+  }, [permission, dismissed]);
 
   function handleDismiss() {
     setDismissed(true);
+    setShowPopup(false);
     localStorage.setItem("notif-popup-dismissed", "true");
   }
 
-  if (permission === "default" && !dismissed) {
+  if (showPopup && permission === "default" && !dismissed) {
     return (
       <div style={{
         position: "fixed",

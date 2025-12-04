@@ -39,6 +39,7 @@ export default function DebtsPage() {
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
   const [convertedAmount, setConvertedAmount] = useState<number | null>(null);
   const [showExchangeConfirmation, setShowExchangeConfirmation] = useState(false);
+  const [globalExchangeRate, setGlobalExchangeRate] = useState<number | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -74,14 +75,16 @@ export default function DebtsPage() {
     setLoading(true);
     setError(undefined);
     try {
-      const [debtsRes, statsRes, accountsRes] = await Promise.all([
+      const [debtsRes, statsRes, accountsRes, exchangeRes] = await Promise.all([
         api.get(`/debts${debtTypeFilter !== "ALL" ? `?type=${debtTypeFilter}` : ""}`),
         api.get("/debts/statistics"),
-        api.get("/accounts")
+        api.get("/accounts"),
+        api.get("/exchange/rate").catch(() => ({ data: { rate: null } }))
       ]);
       setDebts(debtsRes.data.debts || []);
       setStatistics(statsRes.data);
       setAccounts(accountsRes.data.accounts || []);
+      setGlobalExchangeRate(exchangeRes.data.rate);
     } catch (err: any) {
       setError(err?.response?.data?.error ?? "Error al cargar deudas");
       if (err?.response?.status === 401) {
@@ -148,9 +151,26 @@ export default function DebtsPage() {
       const needsConversion = selectedAccount && selectedAccount.currencyCode !== selectedDebt.currencyCode;
       
       // El monto a enviar es el que se pagará de la cuenta (convertido si aplica)
-      const amountCents = needsConversion && convertedAmount !== null
-        ? Math.round(convertedAmount * 100)
-        : Math.round(Number(paymentAmount) * 100);
+      // IMPORTANTE: Si hay conversión, convertedAmount ya está en la moneda de destino (ej: UYU)
+      // y debe multiplicarse por 100 para convertir a centavos
+      let amountCents: number;
+      if (needsConversion && convertedAmount !== null && exchangeRate) {
+        // Usar el monto convertido (ya está en la moneda de destino)
+        amountCents = Math.round(convertedAmount * 100);
+      } else if (needsConversion && exchangeRate) {
+        // Si convertedAmount es null pero hay conversión, calcularlo ahora
+        const debtAmount = Number(paymentAmount);
+        if (selectedDebt.currencyCode === "USD" && selectedAccount.currencyCode === "UYU") {
+          amountCents = Math.round(debtAmount * exchangeRate * 100);
+        } else if (selectedDebt.currencyCode === "UYU" && selectedAccount.currencyCode === "USD") {
+          amountCents = Math.round((debtAmount / exchangeRate) * 100);
+        } else {
+          amountCents = Math.round(debtAmount * 100);
+        }
+      } else {
+        // Sin conversión, usar monto original
+        amountCents = Math.round(Number(paymentAmount) * 100);
+      }
       
       // Normalizar la fecha actual al inicio del día en UTC para evitar problemas de zona horaria
       const now = new Date();
@@ -825,7 +845,13 @@ export default function DebtsPage() {
                           )}
                         </h3>
                         <div style={{ fontSize: "14px", color: "#666", marginBottom: "8px" }}>
-                          <div><strong>Cuota mensual:</strong> {fmtMoney(debt.monthlyPaymentCents, debt.currencyCode)}</div>
+                          <div><strong>Cuota mensual:</strong> {fmtMoney(debt.monthlyPaymentCents, debt.currencyCode)}
+                            {debt.currencyCode === "USD" && user?.currencyCode === "UYU" && globalExchangeRate && (
+                              <span style={{ color: "#856404", marginLeft: "4px" }}>
+                                ({fmtMoney(Math.round((debt.monthlyPaymentCents / 100) * globalExchangeRate * 100), "UYU")})
+                              </span>
+                            )}
+                          </div>
                           <div><strong>Total:</strong> {fmtMoney(debt.totalAmountCents, debt.currencyCode)}</div>
                           <div><strong>Inicio:</strong> {fmtDateUTC(debt.startMonth)}</div>
                           {info.isActive ? (
