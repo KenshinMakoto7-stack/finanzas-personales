@@ -5,6 +5,15 @@ import { useAuth } from "../../../store/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+// Función auxiliar para obtener la fecha del día actual en formato YYYY-MM-DD
+function getTodayDate(): string {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function NewTransactionPage() {
   const { user, token, initialized, initAuth } = useAuth();
   const router = useRouter();
@@ -16,7 +25,7 @@ export default function NewTransactionPage() {
   const [currencyCode, setCurrencyCode] = useState("USD");
   const [desc, setDesc] = useState("");
   const [type, setType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
-  const [occurredAt, setOccurredAt] = useState(new Date().toISOString().slice(0, 16)); // YYYY-MM-DDTHH:mm
+  const [occurredAt, setOccurredAt] = useState(getTodayDate()); // YYYY-MM-DD
   const [msg, setMsg] = useState<string>();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
@@ -135,24 +144,14 @@ export default function NewTransactionPage() {
       const amountRounded = Math.round(Number(amount));
       const amountCents = amountRounded * 100; // Convertir a centavos pero sin decimales
 
-      // Convertir fecha y hora a ISO string
-      // Si está marcado como pagado, usar fecha y hora de hoy
-      const finalDate = isPaid 
-        ? new Date().toISOString().slice(0, 16) 
-        : occurredAt; // Usar el estado occurredAt del componente
+      // Usar la fecha seleccionada (solo día, sin hora)
+      // Si está marcado como pagado, usar fecha de hoy
+      const selectedDate = isPaid ? getTodayDate() : occurredAt;
       
-      // Normalizar la fecha para evitar problemas de zona horaria
-      // Extraer año, mes, día, hora y minutos de la fecha seleccionada
-      const dateObj = new Date(finalDate);
-      const year = dateObj.getFullYear();
-      const month = dateObj.getMonth();
-      const day = dateObj.getDate();
-      const hours = dateObj.getHours();
-      const minutes = dateObj.getMinutes();
-      
-      // Crear una nueva fecha en UTC con esos valores
-      // Esto asegura que la fecha se guarde exactamente como el usuario la seleccionó
-      const normalizedDate = new Date(Date.UTC(year, month, day, hours, minutes, 0, 0));
+      // Normalizar la fecha al inicio del día en UTC (medianoche UTC)
+      // Esto evita problemas de zona horaria y asegura que siempre se guarde el día correcto
+      const [year, month, day] = selectedDate.split('-').map(Number);
+      const normalizedDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
       const occurredAtISO = normalizedDate.toISOString();
 
       const selectedAccount = accounts.find(a => a.id === accountId);
@@ -711,7 +710,7 @@ export default function NewTransactionPage() {
             <input
               id="transaction-date"
               name="transaction-date"
-              type="datetime-local"
+              type="date"
               value={occurredAt}
               onChange={(e) => setOccurredAt(e.target.value)}
               required
