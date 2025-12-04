@@ -63,57 +63,6 @@ export async function listTransactions(req: AuthRequest, res: Response) {
       .get();
 
     let allTransactions = snapshot.docs.map(doc => docToObject(doc));
-    
-    // Debug: Log todas las transacciones antes de filtrar por fecha
-    if (from && to && from === to) {
-      console.log(`[DEBUG FILTRO FECHAS] Total transacciones del usuario (antes de filtros): ${allTransactions.length}`);
-      console.log(`[DEBUG FILTRO FECHAS] Parámetros: from=${from}, to=${to}`);
-      
-      // Mostrar TODAS las transacciones con sus fechas para identificar cuál falta
-      console.log(`[DEBUG FILTRO FECHAS] TODAS las transacciones del usuario:`);
-      allTransactions.forEach((t: any) => {
-        const occurredAtStr = t.occurredAt ? (t.occurredAt instanceof Date ? t.occurredAt.toISOString() : new Date(t.occurredAt).toISOString()) : 'null';
-        const txDate = t.occurredAt ? (t.occurredAt instanceof Date ? t.occurredAt : new Date(t.occurredAt)) : null;
-        let dateStr = 'null';
-        if (txDate && !isNaN(txDate.getTime())) {
-          const txDateUTC = new Date(Date.UTC(
-            txDate.getUTCFullYear(),
-            txDate.getUTCMonth(),
-            txDate.getUTCDate(),
-            0, 0, 0, 0
-          ));
-          dateStr = txDateUTC.toISOString().split('T')[0];
-        }
-        console.log(`[DEBUG FILTRO FECHAS] - ${t.type} | ${t.description || 'Sin descripción'} | ${t.amountCents} ${t.currencyCode} | ${occurredAtStr} | Fecha normalizada: ${dateStr}`);
-      });
-      
-      // Mostrar todas las transacciones del día sin importar filtros
-      const allDayTxs = allTransactions.filter((tx: any) => {
-        if (!tx.occurredAt) return false;
-        const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
-        if (isNaN(txDate.getTime())) return false;
-        const txDateUTC = new Date(Date.UTC(
-          txDate.getUTCFullYear(),
-          txDate.getUTCMonth(),
-          txDate.getUTCDate(),
-          0, 0, 0, 0
-        ));
-        const targetDate = new Date(`${from}T00:00:00.000Z`);
-        const targetDateUTC = new Date(Date.UTC(
-          targetDate.getUTCFullYear(),
-          targetDate.getUTCMonth(),
-          targetDate.getUTCDate(),
-          0, 0, 0, 0
-        ));
-        return txDateUTC.getTime() === targetDateUTC.getTime();
-      });
-      
-      console.log(`[DEBUG FILTRO FECHAS] Transacciones del día ${from} (antes de filtros): ${allDayTxs.length}`);
-      allDayTxs.forEach((t: any) => {
-        const occurredAtStr = t.occurredAt ? (t.occurredAt instanceof Date ? t.occurredAt.toISOString() : new Date(t.occurredAt).toISOString()) : 'null';
-        console.log(`[DEBUG FILTRO FECHAS] - ${t.type} | ${t.description || 'Sin descripción'} | ${t.amountCents} ${t.currencyCode} | ${occurredAtStr}`);
-      });
-    }
 
     // Filtros de fecha
     if (from) {
@@ -130,17 +79,11 @@ export async function listTransactions(req: AuthRequest, res: Response) {
       ));
       const fromTime = fromDateUTC.getTime();
       
-      const beforeFilter = allTransactions.length;
       allTransactions = allTransactions.filter((tx: any) => {
         const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
         // Comparar el timestamp real de la transacción con el inicio del día
         return txDate.getTime() >= fromTime;
       });
-      
-      // Debug: Log para ver qué transacciones se excluyeron
-      if (from && to && from === to && beforeFilter !== allTransactions.length) {
-        console.log(`[DEBUG] Filtro 'from': ${beforeFilter} -> ${allTransactions.length} transacciones`);
-      }
     }
     if (to) {
       // Si solo viene la fecha (YYYY-MM-DD), incluir todo el día hasta 23:59:59.999
@@ -156,18 +99,12 @@ export async function listTransactions(req: AuthRequest, res: Response) {
       ));
       const toTime = toDateUTC.getTime();
       
-      const beforeFilter = allTransactions.length;
       allTransactions = allTransactions.filter((tx: any) => {
         const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
         // Comparar el timestamp real de la transacción (no normalizado) con el límite del día
         // Esto permite incluir todas las transacciones del día hasta 23:59:59.999
         return txDate.getTime() <= toTime;
       });
-      
-      // Debug: Log para ver qué transacciones se excluyeron
-      if (from && to && from === to && beforeFilter !== allTransactions.length) {
-        console.log(`[DEBUG] Filtro 'to': ${beforeFilter} -> ${allTransactions.length} transacciones`);
-      }
     }
 
     // Filtros básicos
@@ -221,22 +158,6 @@ export async function listTransactions(req: AuthRequest, res: Response) {
 
     // Aplicar paginación
     let transactions = allTransactions.slice(skip, skip + take);
-    
-    // Debug: Log para verificar filtros de fecha
-    if (from && to && from === to) {
-      const expenses = transactions.filter((t: any) => t.type === "EXPENSE" && !t.transferId);
-      console.log(`[DEBUG] Transacciones del día ${from}:`, {
-        total: transactions.length,
-        expenses: expenses.length,
-        expenseDetails: expenses.map((t: any) => ({
-          id: t.id,
-          description: t.description,
-          amountCents: t.amountCents,
-          currencyCode: t.currencyCode,
-          occurredAt: t.occurredAt
-        }))
-      });
-    }
 
     // Filtro por tag (post-procesamiento si no se puede hacer en query)
     if (tagId) {
