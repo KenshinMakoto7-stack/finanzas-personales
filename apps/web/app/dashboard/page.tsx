@@ -1,4 +1,5 @@
 "use client";
+// Optimizaciones de rendimiento aplicadas: useCallback, loadingRef, carga lazy
 import { useEffect, useState, useCallback, useRef } from "react";
 import api, { setAuthToken } from "../../lib/api";
 import { useAuth } from "../../store/auth";
@@ -1424,3 +1425,6 @@ export default function Dashboard() {
     </div>
   );
 }
+#   F o r c e   d e p l o y m e n t 
+ 
+ 
