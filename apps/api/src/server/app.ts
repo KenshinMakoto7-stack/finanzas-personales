@@ -1,3 +1,4 @@
+// Optimizaciones de rendimiento aplicadas - Deploy trigger
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
