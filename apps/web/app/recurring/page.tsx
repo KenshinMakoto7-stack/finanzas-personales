@@ -53,15 +53,22 @@ export default function RecurringPage() {
     }
 
     try {
-      // Crear nueva transacción con fecha de hoy
-      const today = new Date().toISOString().slice(0, 16);
+      // Crear nueva transacción con fecha de hoy (normalizada al inicio del día en UTC)
+      const now = new Date();
+      const normalizedDate = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        0, 0, 0, 0
+      ));
+      
       await api.post("/transactions", {
         accountId: tx.accountId,
         categoryId: tx.categoryId,
         type: tx.type,
         amountCents: tx.amountCents,
         currencyCode: tx.currencyCode,
-        occurredAt: new Date(today).toISOString(),
+        occurredAt: normalizedDate.toISOString(),
         description: tx.description || `Pago recurrente: ${tx.category?.name}`,
         isRecurring: false // Esta instancia no es recurrente
       });

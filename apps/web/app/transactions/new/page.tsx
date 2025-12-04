@@ -140,7 +140,20 @@ export default function NewTransactionPage() {
       const finalDate = isPaid 
         ? new Date().toISOString().slice(0, 16) 
         : occurredAt; // Usar el estado occurredAt del componente
-      const occurredAtISO = new Date(finalDate).toISOString();
+      
+      // Normalizar la fecha para evitar problemas de zona horaria
+      // Extraer año, mes, día, hora y minutos de la fecha seleccionada
+      const dateObj = new Date(finalDate);
+      const year = dateObj.getFullYear();
+      const month = dateObj.getMonth();
+      const day = dateObj.getDate();
+      const hours = dateObj.getHours();
+      const minutes = dateObj.getMinutes();
+      
+      // Crear una nueva fecha en UTC con esos valores
+      // Esto asegura que la fecha se guarde exactamente como el usuario la seleccionó
+      const normalizedDate = new Date(Date.UTC(year, month, day, hours, minutes, 0, 0));
+      const occurredAtISO = normalizedDate.toISOString();
 
       const selectedAccount = accounts.find(a => a.id === accountId);
       const isCreditAccount = selectedAccount?.type === "CREDIT";

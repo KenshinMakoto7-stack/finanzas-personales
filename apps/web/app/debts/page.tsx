@@ -98,10 +98,19 @@ export default function DebtsPage() {
     try {
       const amountCents = Math.round(Number(paymentAmount) * 100);
       
+      // Normalizar la fecha actual al inicio del día en UTC para evitar problemas de zona horaria
+      const now = new Date();
+      const normalizedDate = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        0, 0, 0, 0
+      ));
+      
       await api.post(`/debts/${selectedDebt.id}/mark-paid`, {
         amountCents,
         accountId: paymentAccountId || undefined,
-        occurredAt: new Date().toISOString()
+        occurredAt: normalizedDate.toISOString()
       });
       
       setShowMarkPaidModal(false);
