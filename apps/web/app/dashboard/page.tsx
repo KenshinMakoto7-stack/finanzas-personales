@@ -109,10 +109,10 @@ export default function Dashboard() {
       };
       
       const totalIncome = transactions
-        .filter((t: any) => t.type === "INCOME")
+        .filter((t: any) => t.type === "INCOME" && !t.transferId) // Excluir transferencias
         .reduce((sum: number, t: any) => sum + convertToBase(t.amountCents, t.currencyCode || baseCurrency), 0);
       const totalExpenses = transactions
-        .filter((t: any) => t.type === "EXPENSE")
+        .filter((t: any) => t.type === "EXPENSE" && !t.transferId) // Excluir transferencias
         .reduce((sum: number, t: any) => sum + convertToBase(t.amountCents, t.currencyCode || baseCurrency), 0);
       
       // Calcular ahorro dirigido: transferencias a cuentas de tipo SAVINGS o ingresos directos a cuentas SAVINGS
@@ -199,14 +199,16 @@ export default function Dashboard() {
       const todayStr = today.toISOString().slice(0, 10);
       
       // Calcular gasto acumulado del día (convertido a moneda base)
+      // Excluir transferencias (tienen transferId) pero incluir pagos de deuda
       const todayTransactions = await api.get(`/transactions?from=${todayStr}&to=${todayStr}&pageSize=100`);
       const todayExpenses = (todayTransactions.data.transactions || [])
-        .filter((t: any) => t.type === "EXPENSE")
+        .filter((t: any) => t.type === "EXPENSE" && !t.transferId) // Excluir transferencias
         .reduce((sum: number, t: any) => sum + convertToBase(t.amountCents, t.currencyCode || baseCurrency), 0);
       
       // Calcular presupuesto del día usando los mismos datos convertidos que el promedio diario
       // Reutilizar availableBalance ya calculado arriba
-      const remainingDays = data.startOfDay.remainingDaysIncludingToday;
+      // Verificar que data existe antes de acceder a startOfDay
+      const remainingDays = data?.startOfDay?.remainingDaysIncludingToday || 0;
       const dailyBudgetCents = remainingDays > 0 ? Math.floor(availableBalance / remainingDays) : 0;
       const remainingTodayCents = availableBalance - todayExpenses;
       

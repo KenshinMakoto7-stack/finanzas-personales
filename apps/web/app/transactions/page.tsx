@@ -484,6 +484,11 @@ export default function TransactionsPage() {
                         {tx.description && (
                           <div style={{ fontSize: "14px", color: "#666", marginBottom: "8px" }}>
                             {tx.description}
+                            {tx.isDebtPayment && tx.originalCurrencyCode && tx.originalCurrencyCode !== tx.currencyCode && (
+                              <span style={{ fontSize: "12px", color: "#856404", marginLeft: "8px", fontStyle: "italic" }}>
+                                (Pago de deuda: {fmtMoney(tx.originalAmountCents || tx.amountCents, tx.originalCurrencyCode)})
+                              </span>
+                            )}
                           </div>
                         )}
                         <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", fontSize: "12px", color: "#999" }}>
@@ -526,6 +531,11 @@ export default function TransactionsPage() {
                           {tx.type === "EXPENSE" ? "-" : tx.type === "INCOME" ? "+" : ""}
                           {fmtMoney(tx.amountCents, tx.currencyCode || user.currencyCode)}
                         </div>
+                        {tx.isDebtPayment && tx.originalCurrencyCode && tx.originalCurrencyCode !== tx.currencyCode && tx.exchangeRate && (
+                          <div style={{ fontSize: "11px", color: "#856404", marginTop: "4px", fontStyle: "italic" }}>
+                            TC: {tx.exchangeRate.toFixed(2)}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
