@@ -184,8 +184,18 @@ export default function CalendarPage() {
         {/* Header */}
         <div style={{ marginBottom: "24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
           <div>
-            <h1 style={{ fontSize: "28px", fontWeight: "700", color: "var(--color-text-primary, #111827)", marginBottom: "8px" }}>
-              Calendario
+            <Link href="/dashboard" style={{
+              color: "#667eea",
+              textDecoration: "none",
+              fontSize: "14px",
+              fontWeight: "600",
+              marginBottom: "8px",
+              display: "inline-block"
+            }}>
+              ← Volver al Dashboard
+            </Link>
+            <h1 style={{ fontSize: "28px", fontWeight: "700", color: "var(--color-text-primary, #111827)", marginTop: "8px", marginBottom: "8px" }}>
+              📅 Calendario de Pagos Recurrentes
             </h1>
             <p style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "14px" }}>
               Visualiza tus transacciones y eventos planificados
