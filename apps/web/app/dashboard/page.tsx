@@ -209,7 +209,12 @@ export default function Dashboard() {
       // Calcular presupuesto usando datos del backend (budget service)
       // El backend ya calcula todo correctamente con conversión de moneda
       const dailyBudgetCents = data?.startOfDay?.dailyTargetCents || 0;
-      const remainingTodayCents = data?.endOfDay?.availableCents || 0; // Puede ser negativo
+      // Presupuesto Diario Restante = presupuesto diario de hoy - gastos de hoy
+      // O usar rolloverFromTodayCents si está disponible (ya calculado en backend)
+      const rolloverCents = data?.endOfDay?.rolloverFromTodayCents;
+      const remainingTodayCents = rolloverCents !== undefined 
+        ? rolloverCents 
+        : dailyBudgetCents - todayExpenses; // Puede ser negativo
       const dailyTargetTomorrowCents = data?.endOfDay?.dailyTargetTomorrowCents || 0;
       
       // Determinar si hay presupuesto disponible (ingresos del mes o goal)
@@ -775,8 +780,8 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Presupuesto del Día (solo si hay presupuesto) */}
-            {dailyData.hasBudget && (
+            {/* Presupuesto del Día (solo si hay presupuesto Y el presupuesto es mayor a 0) */}
+            {dailyData.hasBudget && dailyData.dailyBudget > 0 && (
               <div style={{
                 background: "var(--color-bg-white, #FFFFFF)",
                 borderRadius: isMobile ? "12px" : "16px",
@@ -792,9 +797,7 @@ export default function Dashboard() {
                   {fmtMoney(dailyData.dailyBudget, user.currencyCode)}
                 </div>
                 <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
-                  {dailyData.dailyBudget > 0 
-                    ? `${Math.round((dailyData.spentToday / dailyData.dailyBudget) * 100)}% utilizado`
-                    : "Sin presupuesto"}
+                  {Math.round((dailyData.spentToday / dailyData.dailyBudget) * 100)}% utilizado
                 </div>
               </div>
             )}
@@ -1109,33 +1112,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Presupuesto Diario Restante - solo si hay presupuesto */}
-          {((monthlyData?.totalIncome > 0) || (monthlyData?.goalCents > 0)) && data && (
-            <div style={{
-              background: "var(--color-bg-white, #FFFFFF)",
-              borderRadius: "16px",
-              padding: "24px",
-              boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
-              border: "1px solid var(--color-border-light, #F3F4F6)"
-            }}>
-              <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
-                Presupuesto Diario Restante
-              </div>
-              <div style={{ 
-                fontSize: "32px", 
-                fontWeight: "700", 
-                color: (data?.endOfDay?.availableCents || 0) >= 0 ? "var(--color-balance-positive, #059669)" : "var(--color-balance-negative, #B45309)", 
-                marginBottom: "8px" 
-              }}>
-                {fmtMoney(data?.endOfDay?.availableCents || 0, user.currencyCode)}
-              </div>
-              <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
-                {data?.startOfDay?.remainingDaysIncludingToday 
-                  ? `${data.startOfDay.remainingDaysIncludingToday} días restantes`
-                  : "Calculando..."}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Meta de Ahorro */}
