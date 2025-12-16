@@ -347,7 +347,27 @@ export async function createTransaction(req: AuthRequest, res: Response) {
     let debtRef: FirebaseFirestore.DocumentReference | null = null;
     let newPaidInstallments: number | null = null;
     
-    if (categoryData.parentId && type === "EXPENSE") {
+    // Intentar obtener debtId del payload (opcional)
+    const debtIdFromPayload = (req.body as any).debtId;
+    
+    if (debtIdFromPayload && type === "EXPENSE") {
+      // Si viene debtId en el payload, usarlo directamente
+      try {
+        const debtDoc = await db.collection("debts").doc(debtIdFromPayload).get();
+        if (debtDoc.exists) {
+          const debtData = debtDoc.data()!;
+          if (debtData.userId === req.user!.userId) {
+            if (debtData.paidInstallments < debtData.totalInstallments) {
+              debtRef = db.collection("debts").doc(debtIdFromPayload);
+              newPaidInstallments = Math.min(debtData.paidInstallments + 1, debtData.totalInstallments);
+            }
+          }
+        }
+      } catch (error: any) {
+        console.error("Error al buscar deuda por ID:", error);
+      }
+    } else if (categoryData && categoryData.parentId && type === "EXPENSE") {
+      // Si no viene debtId, mantener comportamiento actual: buscar por nombre de subcategoría
       try {
         const parentCategoryDoc = await db.collection("categories").doc(categoryData.parentId).get();
         if (parentCategoryDoc.exists) {
@@ -468,9 +488,11 @@ export async function createTransaction(req: AuthRequest, res: Response) {
       // Para INCOME y EXPENSE, crear una sola transacción
       transactionRef = db.collection("transactions").doc();
       
-      // Actualizar transactionData con debtId si se crea deuda
+      // Actualizar transactionData con debtId si se crea deuda o si viene del payload
       if (shouldCreateDebt && newDebtId) {
         (transactionData as any).debtId = newDebtId;
+      } else if (debtIdFromPayload && debtRef) {
+        (transactionData as any).debtId = debtIdFromPayload;
       }
       
       batch.set(transactionRef, objectToFirestore(transactionData));

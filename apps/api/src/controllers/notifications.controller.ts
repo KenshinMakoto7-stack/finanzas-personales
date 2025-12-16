@@ -5,6 +5,15 @@ import { getBudgetSummaryForDate } from "../services/budget.service.js";
 import { docToObject, getDocumentsByIds, fromFirestoreTimestamp } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
 
+// Cache simple en memoria para notificaciones (TTL: 2 minutos)
+interface CacheEntry {
+  notifications: any[];
+  timestamp: number;
+}
+
+const notificationsCache = new Map<string, CacheEntry>();
+const CACHE_TTL = 2 * 60 * 1000; // 2 minutos
+
 export async function registerSubscription(req: AuthRequest, res: Response) {
   try {
     const { endpoint, keys } = req.body;
@@ -53,6 +62,15 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
     const userId = req.user!.userId;
     const { date } = req.query;
 
+    // Verificar cache
+    const cacheKey = `${userId}-${date || 'today'}`;
+    const cached = notificationsCache.get(cacheKey);
+    const now = Date.now();
+    
+    if (cached && (now - cached.timestamp) < CACHE_TTL) {
+      return res.json({ notifications: cached.notifications });
+    }
+
     // Obtener usuario
     const userDoc = await db.collection("users").doc(userId).get();
     if (!userDoc.exists) {
@@ -65,26 +83,26 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
 
     const notifications: any[] = [];
 
+    // OPTIMIZACIÓN: Cargar todas las transacciones UNA SOLA VEZ y reutilizarlas
+    const allTransactionsSnapshot = await db.collection("transactions")
+      .where("userId", "==", userId)
+      .get();
+    
+    const allTransactions = allTransactionsSnapshot.docs.map(doc => docToObject(doc));
+
     // 1. Verificar transacciones recurrentes que deben ejecutarse hoy
-    // Obtener todas las transacciones del usuario y filtrar en memoria para evitar necesidad de índice compuesto
     const tomorrow = new Date(targetDate);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowTimestamp = Timestamp.fromDate(tomorrow);
 
-    const allUserTransactions = await db.collection("transactions")
-      .where("userId", "==", userId)
-      .get();
-
     // Filtrar en memoria: transacciones recurrentes con nextOccurrence <= tomorrow
-    const recurringTransactions = allUserTransactions.docs
-      .map(doc => docToObject(doc))
-      .filter((tx: any) => {
-        return tx.isRecurring === true && 
-               tx.nextOccurrence && 
-               (tx.nextOccurrence instanceof Timestamp 
-                 ? tx.nextOccurrence <= tomorrowTimestamp 
-                 : new Date(tx.nextOccurrence).getTime() <= tomorrow.getTime());
-      });
+    const recurringTransactions = allTransactions.filter((tx: any) => {
+      return tx.isRecurring === true && 
+             tx.nextOccurrence && 
+             (tx.nextOccurrence instanceof Timestamp 
+               ? tx.nextOccurrence <= tomorrowTimestamp 
+               : new Date(tx.nextOccurrence).getTime() <= tomorrow.getTime());
+    });
 
     // Cargar relaciones
     const categoryIds = [...new Set(recurringTransactions.map((t: any) => t.categoryId).filter(Boolean))];
@@ -146,12 +164,7 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
 
     const budgetCategoriesMap = new Map(budgetCategories.map((c: any) => [c.id, c]));
 
-    // Obtener todas las transacciones del mes una sola vez para evitar múltiples consultas
-    const allTransactionsSnapshot = await db.collection("transactions")
-      .where("userId", "==", userId)
-      .get();
-    
-    const allTransactions = allTransactionsSnapshot.docs.map(doc => docToObject(doc));
+    // OPTIMIZACIÓN: Reutilizar allTransactions ya cargadas anteriormente
     const monthStartTime = monthStart.getTime();
     const monthEndTime = monthEnd.getTime();
 
@@ -255,6 +268,23 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
       }
     }
 
+    // Guardar en cache
+    notificationsCache.set(cacheKey, {
+      notifications,
+      timestamp: now
+    });
+
+    // Limpiar cache antiguo (más de 5 minutos)
+    for (const [key, entry] of notificationsCache.entries()) {
+      if (now - entry.timestamp > 5 * 60 * 1000) {
+        notificationsCache.delete(key);
+      }
+    }
+
+    // Agregar headers de cache HTTP (1 minuto)
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.setHeader('ETag', `"${cacheKey}-${now}"`);
+    
     res.json({ notifications });
   } catch (error: any) {
     console.error("Error getting notifications:", error);

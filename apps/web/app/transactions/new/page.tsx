@@ -19,8 +19,13 @@ export default function NewTransactionPage() {
   const router = useRouter();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [parentCategories, setParentCategories] = useState<any[]>([]);
+  const [subcategories, setSubcategories] = useState<any[]>([]);
+  const [debts, setDebts] = useState<any[]>([]);
+  const [selectedParentCategoryId, setSelectedParentCategoryId] = useState("");
   const [accountId, setAccountId] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [selectedDebtId, setSelectedDebtId] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [currencyCode, setCurrencyCode] = useState("USD");
   const [desc, setDesc] = useState("");
@@ -43,12 +48,24 @@ export default function NewTransactionPage() {
 
   const loadData = async () => {
     try {
-      const [accRes, catRes] = await Promise.all([
+      const [accRes, catRes, debtsRes] = await Promise.all([
         api.get("/accounts"),
-        api.get(`/categories?type=${type}`)
+        api.get(`/categories?type=${type}`),
+        type === "EXPENSE" ? api.get("/debts").catch(() => ({ data: { debts: [] } })) : Promise.resolve({ data: { debts: [] } })
       ]);
       setAccounts(accRes.data.accounts || []);
-      setCategories(catRes.data.categories || catRes.data.flat || []);
+      const allCategories = catRes.data.categories || catRes.data.flat || [];
+      setCategories(allCategories);
+      
+      // Separar categorías padre (sin parentId) y subcategorías
+      const parents = allCategories.filter((c: any) => !c.parentId);
+      const subs = allCategories.filter((c: any) => c.parentId);
+      setParentCategories(parents);
+      setSubcategories(subs);
+      
+      // Cargar deudas para mapear subcategoría -> debtId
+      setDebts(debtsRes.data.debts || []);
+      
       if (accRes.data.accounts && accRes.data.accounts.length > 0 && !accountId) {
         setAccountId(accRes.data.accounts[0].id);
         if (typeof window !== "undefined" && !new URLSearchParams(window.location.search).get("currency")) {
@@ -100,6 +117,48 @@ export default function NewTransactionPage() {
     return () => window.removeEventListener("focus", handleFocus);
   }, [type, user, token, initialized, router, initAuth]);
 
+  // Actualizar subcategorías cuando se selecciona una categoría padre
+  useEffect(() => {
+    if (selectedParentCategoryId) {
+      const filteredSubs = subcategories.filter((c: any) => c.parentId === selectedParentCategoryId);
+      // Si la categoría padre seleccionada tiene subcategorías, resetear categoryId
+      if (filteredSubs.length > 0) {
+        setCategoryId("");
+        setSelectedDebtId(null);
+      } else {
+        // Si no tiene subcategorías, usar la categoría padre directamente
+        setCategoryId(selectedParentCategoryId);
+        setSelectedDebtId(null);
+      }
+    } else {
+      setCategoryId("");
+      setSelectedDebtId(null);
+    }
+  }, [selectedParentCategoryId, subcategories]);
+
+  // Mapear subcategoría -> debtId cuando se selecciona una subcategoría de deudas
+  useEffect(() => {
+    if (categoryId && selectedParentCategoryId) {
+      const parentCat = parentCategories.find((c: any) => c.id === selectedParentCategoryId);
+      if (parentCat && parentCat.name === "Deudas") {
+        const subCat = subcategories.find((c: any) => c.id === categoryId);
+        if (subCat) {
+          // Buscar deuda por nombre (description)
+          const matchingDebt = debts.find((d: any) => d.description === subCat.name);
+          if (matchingDebt) {
+            setSelectedDebtId(matchingDebt.id);
+          } else {
+            setSelectedDebtId(null);
+          }
+        }
+      } else {
+        setSelectedDebtId(null);
+      }
+    } else {
+      setSelectedDebtId(null);
+    }
+  }, [categoryId, selectedParentCategoryId, parentCategories, subcategories, debts]);
+
   async function createCategoryQuick() {
     if (!newCategoryName.trim()) {
       alert("Ingresa un nombre para la categoría");
@@ -126,7 +185,19 @@ export default function NewTransactionPage() {
       setError("Selecciona una cuenta");
       return;
     }
-    if (!categoryId) {
+    if (!selectedParentCategoryId) {
+      setError("Selecciona una categoría");
+      return;
+    }
+    // Si la categoría padre tiene subcategorías, validar que se seleccionó una
+    const hasSubcategories = subcategories.filter((c: any) => c.parentId === selectedParentCategoryId).length > 0;
+    if (hasSubcategories && !categoryId) {
+      setError("Selecciona una subcategoría");
+      return;
+    }
+    // Si no tiene subcategorías, usar la categoría padre como categoryId
+    const finalCategoryId = hasSubcategories ? categoryId : selectedParentCategoryId;
+    if (!finalCategoryId) {
       setError("Selecciona o crea una categoría");
       return;
     }
@@ -155,9 +226,13 @@ export default function NewTransactionPage() {
       const selectedAccount = accounts.find(a => a.id === accountId);
       const isCreditAccount = selectedAccount?.type === "CREDIT";
       
+      // Determinar categoryId final (subcategoría si existe, sino categoría padre)
+      const hasSubcategories = subcategories.filter((c: any) => c.parentId === selectedParentCategoryId).length > 0;
+      const finalCategoryId = hasSubcategories ? categoryId : selectedParentCategoryId;
+      
       const payload: any = {
         accountId,
-        categoryId,
+        categoryId: finalCategoryId,
         type,
         amountCents,
         currencyCode,
@@ -166,6 +241,11 @@ export default function NewTransactionPage() {
         isRecurring: isRecurring,
         isPaid: isRecurring ? isPaid : false
       };
+      
+      // Si hay debtId seleccionado, incluirlo en el payload
+      if (selectedDebtId) {
+        payload.debtId = selectedDebtId;
+      }
       
       // Si es cuenta de crédito y está en modo cuotas, agregar información de cuotas
       if (isCreditAccount && type === "EXPENSE" && payInInstallments && numberOfInstallments > 1 && totalAmountForInstallments) {
@@ -206,6 +286,8 @@ export default function NewTransactionPage() {
       setAmount("");
       setDesc("");
       setCategoryId("");
+      setSelectedParentCategoryId("");
+      setSelectedDebtId(null);
       setIsRecurring(false);
       setIsPaid(false);
       setRecurringOccurrences("indefinite");
@@ -300,6 +382,8 @@ export default function NewTransactionPage() {
               onChange={(e) => {
                 setType(e.target.value as any);
                 setCategoryId("");
+                setSelectedParentCategoryId("");
+                setSelectedDebtId(null);
                 setShowCreateCategory(false);
               }}
               style={{
@@ -431,11 +515,9 @@ export default function NewTransactionPage() {
                   }}
                 >
                   <option value="">Sin categoría padre (raíz)</option>
-                  {categories
-                    .filter(c => c.type === type)
-                    .map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
+                  {parentCategories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
                 </select>
                 <div style={{ display: "flex", gap: "8px" }}>
                   <button
@@ -475,25 +557,59 @@ export default function NewTransactionPage() {
                 </div>
               </div>
             ) : (
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                required
-                style={{
-                  width: "100%",
-                  padding: "14px 16px",
-                  border: categoryId ? "2px solid #e0e0e0" : "2px solid #e74c3c",
-                  borderRadius: "10px",
-                  fontSize: "16px",
-                  background: "white",
-                  cursor: "pointer"
-                }}
-              >
-                <option value="">Selecciona una categoría *</option>
-                {categories.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <>
+                {/* Selector de categoría padre */}
+                <select
+                  value={selectedParentCategoryId}
+                  onChange={(e) => {
+                    setSelectedParentCategoryId(e.target.value);
+                    setCategoryId("");
+                    setSelectedDebtId(null);
+                  }}
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "14px 16px",
+                    border: selectedParentCategoryId ? "2px solid #e0e0e0" : "2px solid #e74c3c",
+                    borderRadius: "10px",
+                    fontSize: "16px",
+                    background: "white",
+                    cursor: "pointer",
+                    marginBottom: selectedParentCategoryId && subcategories.filter((c: any) => c.parentId === selectedParentCategoryId).length > 0 ? "12px" : "0"
+                  }}
+                >
+                  <option value="">Selecciona una categoría *</option>
+                  {parentCategories.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                
+                {/* Selector de subcategoría (solo si la categoría padre tiene subcategorías) */}
+                {selectedParentCategoryId && subcategories.filter((c: any) => c.parentId === selectedParentCategoryId).length > 0 && (
+                  <select
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                    required
+                    style={{
+                      width: "100%",
+                      padding: "14px 16px",
+                      border: categoryId ? "2px solid #e0e0e0" : "2px solid #e74c3c",
+                      borderRadius: "10px",
+                      fontSize: "16px",
+                      background: "white",
+                      cursor: "pointer",
+                      marginTop: "12px"
+                    }}
+                  >
+                    <option value="">Selecciona una subcategoría *</option>
+                    {subcategories
+                      .filter((c: any) => c.parentId === selectedParentCategoryId)
+                      .map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                  </select>
+                )}
+              </>
             )}
           </div>
 
@@ -969,7 +1085,7 @@ export default function NewTransactionPage() {
 
           <button
             onClick={save}
-            disabled={loading || !accountId || !categoryId || !amount}
+            disabled={loading || !accountId || !selectedParentCategoryId || !amount || (subcategories.filter((c: any) => c.parentId === selectedParentCategoryId).length > 0 && !categoryId)}
             style={{
               width: "100%",
               padding: "14px",

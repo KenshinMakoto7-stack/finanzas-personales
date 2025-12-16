@@ -140,6 +140,20 @@ export default function TransactionsPage() {
     setPage(1);
   }
 
+  async function handleDelete(id: string) {
+    if (!confirm("¿Estás seguro de eliminar esta transacción? Esta acción no se puede deshacer.")) {
+      return;
+    }
+    
+    try {
+      await api.delete(`/transactions/${id}`);
+      // Recargar transacciones después de eliminar
+      loadTransactions();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || "Error al eliminar transacción");
+    }
+  }
+
   if (!user) return null;
 
   return (
@@ -536,22 +550,38 @@ export default function TransactionsPage() {
                             TC: {tx.exchangeRate.toFixed(2)}
                           </div>
                         )}
-                        <Link
-                          href={`/transactions/edit/${tx.id}`}
-                          style={{
-                            padding: "6px 12px",
-                            background: "#667eea",
-                            color: "white",
-                            textDecoration: "none",
-                            borderRadius: "6px",
-                            fontSize: "12px",
-                            fontWeight: "600",
-                            display: "inline-block",
-                            marginTop: "4px"
-                          }}
-                        >
-                          Editar
-                        </Link>
+                        <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+                          <Link
+                            href={`/transactions/edit/${tx.id}`}
+                            style={{
+                              padding: "6px 12px",
+                              background: "#667eea",
+                              color: "white",
+                              textDecoration: "none",
+                              borderRadius: "6px",
+                              fontSize: "12px",
+                              fontWeight: "600",
+                              display: "inline-block"
+                            }}
+                          >
+                            Editar
+                          </Link>
+                          <button
+                            onClick={() => handleDelete(tx.id)}
+                            style={{
+                              padding: "6px 12px",
+                              background: "#e74c3c",
+                              color: "white",
+                              border: "none",
+                              borderRadius: "6px",
+                              fontSize: "12px",
+                              fontWeight: "600",
+                              cursor: "pointer"
+                            }}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
