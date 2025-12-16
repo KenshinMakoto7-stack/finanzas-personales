@@ -12,8 +12,27 @@ api.interceptors.response.use(
   (error) => {
     // Manejar 401 Unauthorized - token expirado o inválido
     if (error.response?.status === 401) {
-      // No hacer nada aquí, dejar que cada componente maneje el 401
-      // Algunos componentes redirigen al login, otros muestran un mensaje
+      // Si estamos en el cliente (navegador), redirigir al login con mensaje de sesión expirada
+      if (typeof window !== "undefined") {
+        // Limpiar el token del store de autenticación
+        const authStorage = localStorage.getItem("auth-storage");
+        if (authStorage) {
+          try {
+            const authData = JSON.parse(authStorage);
+            if (authData.state?.token) {
+              // Limpiar el token
+              authData.state.token = undefined;
+              authData.state.user = undefined;
+              localStorage.setItem("auth-storage", JSON.stringify(authData));
+            }
+          } catch (e) {
+            // Si hay error al parsear, limpiar todo
+            localStorage.removeItem("auth-storage");
+          }
+        }
+        // Redirigir al login con mensaje de sesión expirada
+        window.location.href = "/login?expired=true";
+      }
       return Promise.reject(error);
     }
     // Manejar timeout

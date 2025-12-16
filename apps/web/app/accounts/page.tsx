@@ -11,6 +11,7 @@ export default function AccountsPage() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     type: "CASH" as "CASH" | "BANK" | "CREDIT" | "SAVINGS" | "OTHER",
@@ -55,6 +56,34 @@ export default function AccountsPage() {
     } catch (err: any) {
       alert(err?.response?.data?.error || "Error al crear cuenta");
     }
+  }
+
+  async function handleEdit(account: any) {
+    setEditingAccount(account.id);
+    setFormData({
+      name: account.name,
+      type: account.type,
+      currencyCode: account.currencyCode
+    });
+    setShowCreate(false);
+  }
+
+  async function handleUpdate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingAccount) return;
+    try {
+      await api.put(`/accounts/${editingAccount}`, { name: formData.name });
+      setEditingAccount(null);
+      setFormData({ name: "", type: "CASH", currencyCode: user?.currencyCode || "USD" });
+      loadAccounts();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || "Error al actualizar cuenta");
+    }
+  }
+
+  function handleCancelEdit() {
+    setEditingAccount(null);
+    setFormData({ name: "", type: "CASH", currencyCode: user?.currencyCode || "USD" });
   }
 
   async function handleDelete(id: string) {
@@ -130,15 +159,17 @@ export default function AccountsPage() {
             </button>
           </div>
 
-          {showCreate && (
+          {(showCreate || editingAccount) && (
             <div style={{
               background: "#f8f9fa",
               padding: "24px",
               borderRadius: "12px",
               marginBottom: "24px"
             }}>
-              <h3 style={{ marginBottom: "16px", color: "#333" }}>Nueva Cuenta</h3>
-              <form onSubmit={handleSubmit}>
+              <h3 style={{ marginBottom: "16px", color: "#333" }}>
+                {editingAccount ? "Editar Cuenta" : "Nueva Cuenta"}
+              </h3>
+              <form onSubmit={editingAccount ? handleUpdate : handleSubmit}>
                 <div style={{ marginBottom: "16px" }}>
                   <label style={{ display: "block", marginBottom: "8px", fontWeight: "600" }}>Nombre *</label>
                   <input
@@ -156,45 +187,49 @@ export default function AccountsPage() {
                     }}
                   />
                 </div>
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "8px", fontWeight: "600" }}>Tipo *</label>
-                  <select
-                    value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-                    required
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      border: "2px solid #e0e0e0",
-                      borderRadius: "8px",
-                      fontSize: "16px"
-                    }}
-                  >
-                    <option value="CASH">Efectivo</option>
-                    <option value="BANK">Banco</option>
-                    <option value="CREDIT">Tarjeta de Crédito</option>
-                    <option value="SAVINGS">Ahorro</option>
-                    <option value="OTHER">Otro</option>
-                  </select>
-                </div>
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", marginBottom: "8px", fontWeight: "600" }}>Moneda *</label>
-                  <select
-                    value={formData.currencyCode}
-                    onChange={(e) => setFormData({ ...formData, currencyCode: e.target.value })}
-                    required
-                    style={{
-                      width: "100%",
-                      padding: "12px",
-                      border: "2px solid #e0e0e0",
-                      borderRadius: "8px",
-                      fontSize: "16px"
-                    }}
-                  >
-                    <option value="USD">USD - Dólar Estadounidense</option>
-                    <option value="UYU">UYU - Peso Uruguayo</option>
-                  </select>
-                </div>
+                {!editingAccount && (
+                  <>
+                    <div style={{ marginBottom: "16px" }}>
+                      <label style={{ display: "block", marginBottom: "8px", fontWeight: "600" }}>Tipo *</label>
+                      <select
+                        value={formData.type}
+                        onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
+                        required
+                        style={{
+                          width: "100%",
+                          padding: "12px",
+                          border: "2px solid #e0e0e0",
+                          borderRadius: "8px",
+                          fontSize: "16px"
+                        }}
+                      >
+                        <option value="CASH">Efectivo</option>
+                        <option value="BANK">Banco</option>
+                        <option value="CREDIT">Tarjeta de Crédito</option>
+                        <option value="SAVINGS">Ahorro</option>
+                        <option value="OTHER">Otro</option>
+                      </select>
+                    </div>
+                    <div style={{ marginBottom: "16px" }}>
+                      <label style={{ display: "block", marginBottom: "8px", fontWeight: "600" }}>Moneda *</label>
+                      <select
+                        value={formData.currencyCode}
+                        onChange={(e) => setFormData({ ...formData, currencyCode: e.target.value })}
+                        required
+                        style={{
+                          width: "100%",
+                          padding: "12px",
+                          border: "2px solid #e0e0e0",
+                          borderRadius: "8px",
+                          fontSize: "16px"
+                        }}
+                      >
+                        <option value="USD">USD - Dólar Estadounidense</option>
+                        <option value="UYU">UYU - Peso Uruguayo</option>
+                      </select>
+                    </div>
+                  </>
+                )}
                 <div style={{ display: "flex", gap: "12px" }}>
                   <button
                     type="submit"
@@ -209,13 +244,17 @@ export default function AccountsPage() {
                       cursor: "pointer"
                     }}
                   >
-                    Crear
+                    {editingAccount ? "Actualizar" : "Crear"}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setShowCreate(false);
-                      setFormData({ name: "", type: "CASH", currencyCode: user?.currencyCode || "USD" });
+                      if (editingAccount) {
+                        handleCancelEdit();
+                      } else {
+                        setShowCreate(false);
+                        setFormData({ name: "", type: "CASH", currencyCode: user?.currencyCode || "USD" });
+                      }
                     }}
                     style={{
                       padding: "12px 24px",
@@ -279,20 +318,36 @@ export default function AccountsPage() {
                       {typeLabels[account.type]} • {account.currencyCode}
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleDelete(account.id)}
-                    style={{
-                      padding: "8px 16px",
-                      background: "var(--color-expense, #B45309)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "6px",
-                      fontSize: "14px",
-                      cursor: "pointer"
-                    }}
-                  >
-                    Eliminar
-                  </button>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      onClick={() => handleEdit(account)}
+                      style={{
+                        padding: "8px 16px",
+                        background: "#667eea",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "6px",
+                        fontSize: "14px",
+                        cursor: "pointer"
+                      }}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleDelete(account.id)}
+                      style={{
+                        padding: "8px 16px",
+                        background: "var(--color-expense, #B45309)",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "6px",
+                        fontSize: "14px",
+                        cursor: "pointer"
+                      }}
+                    >
+                      Eliminar
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

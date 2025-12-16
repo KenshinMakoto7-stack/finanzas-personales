@@ -1,16 +1,24 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useAuth } from "../../store/auth";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useZodForm, Form, FormInput, Button } from "../../components/ui";
 import { LoginSchema, LoginInput } from "../../lib/schemas";
 
-export default function LoginPage() {
+function LoginForm() {
   const { login } = useAuth();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Verificar si el token expiró
+  useEffect(() => {
+    if (searchParams?.get("expired") === "true") {
+      setError("Tu sesión se cerró por seguridad debido a inactividad. Por favor, inicia sesión nuevamente.");
+    }
+  }, [searchParams]);
 
   const form = useZodForm(LoginSchema, {
     email: "",
@@ -121,5 +129,34 @@ export default function LoginPage() {
         </Form>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ 
+        minHeight: "100vh", 
+        display: "flex", 
+        alignItems: "center", 
+        justifyContent: "center",
+        padding: "20px"
+      }}>
+        <div style={{
+          background: "var(--color-bg-white, #FFFFFF)",
+          borderRadius: "20px",
+          boxShadow: "var(--shadow-xl, 0 20px 25px -5px rgba(0, 0, 0, 0.1))",
+          border: "1px solid var(--color-border-light, #F3F4F6)",
+          padding: "40px",
+          maxWidth: "420px",
+          width: "100%",
+          textAlign: "center"
+        }}>
+          <p style={{ color: "var(--color-text-secondary, #6B7280)" }}>Cargando...</p>
+        </div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }
