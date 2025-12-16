@@ -73,7 +73,10 @@ export const CategoryBudgetSchema = z.object({
   categoryId: z.string().min(1),
   month: z.string(), // ISO date string
   budgetCents: z.number().int().positive(),
-  alertThreshold: z.number().int().min(0).max(100).default(80)
+  // Soporte para formato antiguo (un solo umbral) y nuevo (array de hasta 5)
+  alertThreshold: z.number().int().min(0).max(100).optional(), // Deprecated, mantener para migración
+  alertThresholds: z.array(z.number().int().min(0).max(100)).max(5).optional(), // Nuevo formato: array de hasta 5 umbrales
+  triggeredThresholds: z.array(z.number().int().min(0).max(100)).optional() // Umbrales ya disparados este mes
 });
 
 export const TagSchema = z.object({

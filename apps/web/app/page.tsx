@@ -30,7 +30,7 @@ export default function Home() {
           Finanzas Personales
         </h1>
         <p style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "18px", marginBottom: "32px" }}>
-          Controla tu dinero día a día con un sistema claro de ingresos, metas de ahorro y presupuesto diario dinámico.
+          Controla tu dinero día a día con un sistema claro de ingresos, metas de ahorro y límites de gasto.
         </p>
         <div style={{ display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap" }}>
           <Link href="/login" style={{

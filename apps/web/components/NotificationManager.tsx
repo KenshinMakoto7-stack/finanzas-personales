@@ -208,7 +208,7 @@ export default function NotificationManager() {
           ¿Activar notificaciones?
         </div>
         <div style={{ fontSize: "14px", color: "#666", marginBottom: "12px" }}>
-          Recibe alertas sobre presupuestos, transacciones recurrentes y metas
+          Recibe alertas sobre límites, transacciones recurrentes y metas
         </div>
         <button
           onClick={requestPermission}

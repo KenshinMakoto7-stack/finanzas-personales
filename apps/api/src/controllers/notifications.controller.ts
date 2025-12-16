@@ -179,6 +179,10 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
     
     const monthTransactions = monthTransactionsSnapshot.docs.map(doc => docToObject(doc));
 
+    // Batch para actualizar triggeredThresholds
+    const batch = db.batch();
+    let hasUpdates = false;
+
     for (const budget of budgets) {
       // Filtrar transacciones del mes por categoría y tipo EXPENSE
       const expenses = monthTransactions.filter((tx: any) => {
@@ -193,25 +197,66 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
         ? Math.round((spentCents / budget.budgetCents) * 100)
         : 0;
 
-      const category = budgetCategoriesMap.get(budget.categoryId);
+      // Normalizar alertThresholds
+      let alertThresholds: number[] = [];
+      if (budget.alertThresholds && Array.isArray(budget.alertThresholds)) {
+        alertThresholds = budget.alertThresholds.sort((a, b) => a - b);
+      } else if (budget.alertThreshold !== undefined) {
+        // Migración automática: convertir alertThreshold antiguo a array
+        alertThresholds = [budget.alertThreshold];
+      }
 
-      if (percentage >= budget.alertThreshold && percentage < 100) {
+      if (alertThresholds.length === 0) continue;
+
+      const category = budgetCategoriesMap.get(budget.categoryId);
+      const triggeredThresholds = budget.triggeredThresholds || [];
+      
+      // Determinar qué umbrales se han alcanzado
+      const reachedThresholds = alertThresholds.filter(threshold => percentage >= threshold);
+      const newThresholds = reachedThresholds.filter(t => !triggeredThresholds.includes(t));
+
+      // Disparar notificaciones solo para umbrales nuevos
+      if (newThresholds.length > 0) {
+        // Disparar notificación para el umbral más alto alcanzado
+        const highestNewThreshold = Math.max(...newThresholds);
         notifications.push({
-          type: "BUDGET_ALERT",
-          title: "Alerta de Presupuesto",
-          message: `Has alcanzado el ${percentage}% del presupuesto de ${category?.name || "Categoría"}`,
-          data: { budgetId: budget.id, categoryId: budget.categoryId },
-          priority: percentage >= 90 ? "high" : "normal"
+          type: "LIMIT_ALERT",
+          title: "Alerta de Límite",
+          message: `Has alcanzado el ${highestNewThreshold}% del límite de ${category?.name || "Categoría"}`,
+          data: { limitId: budget.id, categoryId: budget.categoryId, threshold: highestNewThreshold },
+          priority: highestNewThreshold >= 90 ? "high" : "normal"
         });
-      } else if (percentage >= 100) {
+
+        // Actualizar triggeredThresholds en batch
+        const budgetRef = db.collection("categoryBudgets").doc(budget.id);
+        batch.update(budgetRef, {
+          triggeredThresholds: reachedThresholds, // Guardar todos los umbrales alcanzados
+          updatedAt: Timestamp.now()
+        });
+        hasUpdates = true;
+      } else if (percentage >= 100 && !triggeredThresholds.includes(100)) {
+        // Notificación especial para exceder el límite (solo si no se había disparado antes)
         notifications.push({
-          type: "BUDGET_EXCEEDED",
-          title: "Presupuesto Excedido",
-          message: `Has excedido el presupuesto de ${category?.name || "Categoría"}`,
-          data: { budgetId: budget.id, categoryId: budget.categoryId },
+          type: "LIMIT_EXCEEDED",
+          title: "Límite Excedido",
+          message: `Has excedido el límite de ${category?.name || "Categoría"}`,
+          data: { limitId: budget.id, categoryId: budget.categoryId },
           priority: "high"
         });
+
+        // Marcar 100% como disparado
+        const budgetRef = db.collection("categoryBudgets").doc(budget.id);
+        batch.update(budgetRef, {
+          triggeredThresholds: [...reachedThresholds, 100],
+          updatedAt: Timestamp.now()
+        });
+        hasUpdates = true;
       }
+    }
+
+    // Ejecutar batch si hay actualizaciones
+    if (hasUpdates) {
+      await batch.commit();
     }
 
     // 3. Verificar metas de ahorro

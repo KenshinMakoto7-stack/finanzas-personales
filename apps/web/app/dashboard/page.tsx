@@ -37,6 +37,7 @@ export default function Dashboard() {
   const [dailyData, setDailyData] = useState<any>(null);
   const [previousMonthData, setPreviousMonthData] = useState<any>(null);
   const [pendingRecurring, setPendingRecurring] = useState<any[]>([]);
+  const [activeLimitAlerts, setActiveLimitAlerts] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0); // Key para forzar recarga
   const loadingRef = useRef(false); // Flag para prevenir llamadas duplicadas
 
@@ -211,13 +212,18 @@ export default function Dashboard() {
       const remainingTodayCents = data?.endOfDay?.availableCents || 0; // Puede ser negativo
       const dailyTargetTomorrowCents = data?.endOfDay?.dailyTargetTomorrowCents || 0;
       
+      // Determinar si hay presupuesto disponible (ingresos del mes o goal)
+      // Usar las variables locales calculadas arriba, no monthlyData que aún no se ha actualizado
+      const hasBudget = (totalIncome > 0) || (goalCentsConverted > 0) || (dailyBudgetCents > 0);
+      
       setDailyData({
         spentToday: todayExpenses,
         dailyBudget: dailyBudgetCents,
         remainingToday: remainingTodayCents,
         dailyTarget: dailyBudgetCents,
         dailyTargetTomorrow: dailyTargetTomorrowCents,
-        hasGoal: monthlyData?.goalCents > 0
+        hasGoal: goalCentsConverted > 0,
+        hasBudget: hasBudget
       });
 
       // Cargar datos del mes pasado para comparación (solo si es el mes actual)
@@ -291,8 +297,14 @@ export default function Dashboard() {
         setPendingRecurring([]);
       }
 
-      // Alerts functionality not implemented yet
-      // await api.get(`/alerts/preview?date=${dateStr}`);
+      // Cargar alertas activas de límites
+      try {
+        const alertsRes = await api.get(`/budgets/active-alerts?month=${monthStart}`);
+        setActiveLimitAlerts(alertsRes.data.alerts || []);
+      } catch (err) {
+        console.error("Error loading active limit alerts:", err);
+        setActiveLimitAlerts([]);
+      }
     } catch (err: any) {
       setError(err?.response?.data?.error ?? "Error al cargar los datos");
       if (err?.response?.status === 401) {
@@ -567,6 +579,33 @@ export default function Dashboard() {
                   🏷️ Categorías
                 </button>
               </Link>
+              <Link href="/limits" style={{ textDecoration: "none" }}>
+                <button style={{
+                  padding: "12px 16px",
+                  background: "var(--color-bg-white, #FFFFFF)",
+                  color: "var(--color-text-primary, #111827)",
+                  border: "1px solid var(--color-border, #E5E7EB)",
+                  borderRadius: "10px",
+                  fontSize: "13px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+                  transition: "all 0.2s",
+                  width: "100%"
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "#667eea";
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.08)";
+                }}>
+                  ⚠️ Límites
+                </button>
+              </Link>
               <Link href="/debts" style={{ textDecoration: "none" }}>
                 <button style={{
                   padding: "12px 16px",
@@ -664,7 +703,7 @@ export default function Dashboard() {
             marginBottom: isMobile ? "16px" : "24px"
           }}>
             {/* Presupuesto Diario Restante (PRIMERA TARJETA) */}
-            {dailyData.hasGoal && (
+            {dailyData.hasBudget && (
               <div style={{
                 background: "var(--color-bg-white, #FFFFFF)",
                 borderRadius: isMobile ? "12px" : "16px",
@@ -693,7 +732,7 @@ export default function Dashboard() {
             )}
 
             {/* Presupuesto Diario Mañana (solo si hay presupuesto) */}
-            {dailyData.hasGoal && dailyData.dailyTargetTomorrow !== undefined && (
+            {dailyData.hasBudget && dailyData.dailyTargetTomorrow !== undefined && (
               <div style={{
                 background: "var(--color-bg-white, #FFFFFF)",
                 borderRadius: isMobile ? "12px" : "16px",
@@ -737,7 +776,7 @@ export default function Dashboard() {
             </div>
 
             {/* Presupuesto del Día (solo si hay presupuesto) */}
-            {dailyData.hasGoal && (
+            {dailyData.hasBudget && (
               <div style={{
                 background: "var(--color-bg-white, #FFFFFF)",
                 borderRadius: isMobile ? "12px" : "16px",
@@ -789,6 +828,131 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Alertas Activas de Límites */}
+        {activeLimitAlerts.length > 0 && (
+          <div style={{
+            background: "var(--color-bg-white, #FFFFFF)",
+            borderRadius: "16px",
+            padding: "24px",
+            marginBottom: "24px",
+            boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+            border: "1px solid var(--color-border-light, #F3F4F6)"
+          }}>
+            <h3 style={{ 
+              fontSize: "20px", 
+              fontWeight: "700", 
+              marginBottom: "16px", 
+              color: "var(--color-text-primary, #111827)", 
+              fontFamily: "'Inter', sans-serif" 
+            }}>
+              ⚠️ Alertas de Límites
+            </h3>
+            <div style={{ display: "grid", gap: "16px" }}>
+              {activeLimitAlerts.map((alert: any) => (
+                <div 
+                  key={alert.limitId} 
+                  style={{
+                    padding: "16px",
+                    background: alert.isExceeded 
+                      ? "rgba(180, 83, 9, 0.1)" 
+                      : "rgba(245, 158, 11, 0.1)",
+                    borderRadius: "12px",
+                    border: `2px solid ${alert.isExceeded ? "var(--color-expense, #B45309)" : "var(--color-warning, #F59E0B)"}`
+                  }}
+                >
+                  <div style={{ 
+                    display: "flex", 
+                    justifyContent: "space-between", 
+                    alignItems: "flex-start",
+                    marginBottom: "12px"
+                  }}>
+                    <div>
+                      <div style={{ 
+                        fontSize: "16px", 
+                        fontWeight: "700", 
+                        color: "var(--color-text-primary, #111827)",
+                        marginBottom: "4px"
+                      }}>
+                        {alert.categoryName}
+                      </div>
+                      <div style={{ 
+                        fontSize: "12px", 
+                        color: "var(--color-text-secondary, #6B7280)" 
+                      }}>
+                        {alert.isExceeded ? "Límite excedido" : `Alerta: ${alert.percentage}% alcanzado`}
+                      </div>
+                    </div>
+                    <div style={{
+                      fontSize: "20px",
+                      fontWeight: "700",
+                      color: alert.isExceeded 
+                        ? "var(--color-expense, #B45309)" 
+                        : "var(--color-warning, #F59E0B)"
+                    }}>
+                      {alert.percentage}%
+                    </div>
+                  </div>
+                  <div style={{ 
+                    display: "grid", 
+                    gridTemplateColumns: "repeat(2, 1fr)", 
+                    gap: "12px",
+                    marginTop: "12px"
+                  }}>
+                    <div>
+                      <div style={{ fontSize: "11px", color: "var(--color-text-secondary, #6B7280)", marginBottom: "4px" }}>
+                        Gastado
+                      </div>
+                      <div style={{ fontSize: "14px", fontWeight: "600", color: "var(--color-text-primary, #111827)" }}>
+                        {fmtMoney(alert.spentCents, user.currencyCode)}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "11px", color: "var(--color-text-secondary, #6B7280)", marginBottom: "4px" }}>
+                        Restante
+                      </div>
+                      <div style={{ 
+                        fontSize: "14px", 
+                        fontWeight: "600", 
+                        color: alert.remainingCents > 0 
+                          ? "var(--color-balance-positive, #059669)" 
+                          : "var(--color-expense, #B45309)"
+                      }}>
+                        {fmtMoney(alert.remainingCents, user.currencyCode)}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: "12px" }}>
+                    <div style={{ 
+                      width: "100%", 
+                      height: "8px", 
+                      background: "#e0e0e0", 
+                      borderRadius: "4px", 
+                      overflow: "hidden" 
+                    }}>
+                      <div style={{
+                        width: `${Math.min(100, alert.percentage)}%`,
+                        height: "100%",
+                        background: alert.isExceeded 
+                          ? "var(--color-expense, #B45309)" 
+                          : "var(--color-warning, #F59E0B)",
+                        transition: "width 0.3s"
+                      }} />
+                    </div>
+                    <div style={{ 
+                      fontSize: "11px", 
+                      color: "var(--color-text-tertiary, #9CA3AF)", 
+                      marginTop: "4px",
+                      textAlign: "right"
+                    }}>
+                      Límite: {fmtMoney(alert.limitCents, user.currencyCode)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -946,7 +1110,7 @@ export default function Dashboard() {
           </div>
 
           {/* Presupuesto Diario Restante - solo si hay presupuesto */}
-          {monthlyData?.goalCents > 0 && data && (
+          {((monthlyData?.totalIncome > 0) || (monthlyData?.goalCents > 0)) && data && (
             <div style={{
               background: "var(--color-bg-white, #FFFFFF)",
               borderRadius: "16px",
