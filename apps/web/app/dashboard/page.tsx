@@ -205,18 +205,19 @@ export default function Dashboard() {
         .filter((t: any) => t.type === "EXPENSE" && !t.transferId) // Excluir transferencias
         .reduce((sum: number, t: any) => sum + convertToBase(t.amountCents, t.currencyCode || baseCurrency), 0);
       
-      // Calcular presupuesto del día usando los mismos datos convertidos que el promedio diario
-      // Reutilizar availableBalance ya calculado arriba
-      // Verificar que data existe antes de acceder a startOfDay
-      const remainingDays = data?.startOfDay?.remainingDaysIncludingToday || 0;
-      const dailyBudgetCents = remainingDays > 0 ? Math.floor(availableBalance / remainingDays) : 0;
-      const remainingTodayCents = availableBalance - todayExpenses;
+      // Calcular presupuesto usando datos del backend (budget service)
+      // El backend ya calcula todo correctamente con conversión de moneda
+      const dailyBudgetCents = data?.startOfDay?.dailyTargetCents || 0;
+      const remainingTodayCents = data?.endOfDay?.availableCents || 0; // Puede ser negativo
+      const dailyTargetTomorrowCents = data?.endOfDay?.dailyTargetTomorrowCents || 0;
       
       setDailyData({
         spentToday: todayExpenses,
         dailyBudget: dailyBudgetCents,
         remainingToday: remainingTodayCents,
-        dailyTarget: dailyBudgetCents
+        dailyTarget: dailyBudgetCents,
+        dailyTargetTomorrow: dailyTargetTomorrowCents,
+        hasGoal: monthlyData?.goalCents > 0
       });
 
       // Cargar datos del mes pasado para comparación (solo si es el mes actual)
@@ -662,6 +663,60 @@ export default function Dashboard() {
             gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(auto-fit, minmax(220px, 1fr))",
             marginBottom: isMobile ? "16px" : "24px"
           }}>
+            {/* Presupuesto Diario Restante (PRIMERA TARJETA) */}
+            {dailyData.hasGoal && (
+              <div style={{
+                background: "var(--color-bg-white, #FFFFFF)",
+                borderRadius: isMobile ? "12px" : "16px",
+                padding: isMobile ? "16px" : "24px",
+                boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+                borderLeft: "4px solid var(--color-primary, #4F46E5)",
+                border: "1px solid var(--color-border-light, #F3F4F6)"
+              }}>
+                <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: isMobile ? "12px" : "14px", marginBottom: "8px", fontWeight: "600" }}>
+                  Presupuesto Diario Restante
+                </div>
+                <div style={{ 
+                  fontSize: isMobile ? "24px" : "32px", 
+                  fontWeight: "700", 
+                  color: dailyData.remainingToday >= 0 ? "var(--color-balance-positive, #059669)" : "var(--color-balance-negative, #B45309)", 
+                  marginBottom: "8px" 
+                }}>
+                  {fmtMoney(dailyData.remainingToday, user.currencyCode)}
+                </div>
+                <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
+                  {data?.startOfDay?.remainingDaysIncludingToday 
+                    ? `${data.startOfDay.remainingDaysIncludingToday} días restantes`
+                    : "Calculando..."}
+                </div>
+              </div>
+            )}
+
+            {/* Presupuesto Diario Mañana (solo si hay presupuesto) */}
+            {dailyData.hasGoal && dailyData.dailyTargetTomorrow !== undefined && (
+              <div style={{
+                background: "var(--color-bg-white, #FFFFFF)",
+                borderRadius: isMobile ? "12px" : "16px",
+                padding: isMobile ? "16px" : "24px",
+                boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+                borderLeft: "4px solid var(--color-primary, #4F46E5)",
+                border: "1px solid var(--color-border-light, #F3F4F6)"
+              }}>
+                <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: isMobile ? "12px" : "14px", marginBottom: "8px", fontWeight: "600" }}>
+                  Presupuesto Diario Mañana
+                </div>
+                <div className="secondary-number" style={{ color: "var(--color-primary, #4F46E5)", marginBottom: "8px" }}>
+                  {fmtMoney(dailyData.dailyTargetTomorrow || 0, user.currencyCode)}
+                </div>
+                <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
+                  {data?.endOfDay?.remainingDaysExcludingToday 
+                    ? `A partir de mañana (${data.endOfDay.remainingDaysExcludingToday} días)`
+                    : "Sin días restantes"}
+                </div>
+              </div>
+            )}
+
+            {/* Gasto Acumulado del Día */}
             <div style={{
               background: "var(--color-bg-white, #FFFFFF)",
               borderRadius: isMobile ? "12px" : "16px",
@@ -681,50 +736,29 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div style={{
-              background: "var(--color-bg-white, #FFFFFF)",
-              borderRadius: isMobile ? "12px" : "16px",
-              padding: isMobile ? "16px" : "24px",
-              boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
-              borderLeft: "4px solid var(--color-primary, #4F46E5)",
-              border: "1px solid var(--color-border-light, #F3F4F6)"
-            }}>
-              <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: isMobile ? "12px" : "14px", marginBottom: "8px", fontWeight: "600" }}>
-                Presupuesto del Día
-              </div>
-              <div className="secondary-number" style={{ color: "var(--color-primary, #4F46E5)", marginBottom: "8px" }}>
-                {fmtMoney(dailyData.dailyBudget, user.currencyCode)}
-              </div>
-              <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
-                {dailyData.dailyBudget > 0 
-                  ? `${Math.round((dailyData.spentToday / dailyData.dailyBudget) * 100)}% utilizado`
-                  : "Sin presupuesto"}
-              </div>
-            </div>
-
-            <div style={{
-              background: "var(--color-bg-white, #FFFFFF)",
-              borderRadius: isMobile ? "12px" : "16px",
-              padding: isMobile ? "16px" : "24px",
-              boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
-              borderLeft: "4px solid var(--color-income, #059669)",
-              border: "1px solid var(--color-border-light, #F3F4F6)"
-            }}>
-              <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: isMobile ? "12px" : "14px", marginBottom: "8px", fontWeight: "600" }}>
-                Restante del Día
-              </div>
-              <div style={{ 
-                fontSize: isMobile ? "24px" : "32px", 
-                fontWeight: "700", 
-                color: dailyData.remainingToday >= 0 ? "var(--color-balance-positive, #059669)" : "var(--color-balance-negative, #B45309)", 
-                marginBottom: "8px" 
+            {/* Presupuesto del Día (solo si hay presupuesto) */}
+            {dailyData.hasGoal && (
+              <div style={{
+                background: "var(--color-bg-white, #FFFFFF)",
+                borderRadius: isMobile ? "12px" : "16px",
+                padding: isMobile ? "16px" : "24px",
+                boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+                borderLeft: "4px solid var(--color-primary, #4F46E5)",
+                border: "1px solid var(--color-border-light, #F3F4F6)"
               }}>
-                {fmtMoney(dailyData.remainingToday, user.currencyCode)}
+                <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: isMobile ? "12px" : "14px", marginBottom: "8px", fontWeight: "600" }}>
+                  Presupuesto del Día
+                </div>
+                <div className="secondary-number" style={{ color: "var(--color-primary, #4F46E5)", marginBottom: "8px" }}>
+                  {fmtMoney(dailyData.dailyBudget, user.currencyCode)}
+                </div>
+                <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
+                  {dailyData.dailyBudget > 0 
+                    ? `${Math.round((dailyData.spentToday / dailyData.dailyBudget) * 100)}% utilizado`
+                    : "Sin presupuesto"}
+                </div>
               </div>
-              <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
-                {dailyData.remainingToday >= 0 ? "Disponible" : "Excedido"}
-              </div>
-            </div>
+            )}
 
             {previousMonthData && (
               <div style={{
@@ -911,41 +945,33 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div style={{
-            background: "var(--color-bg-white, #FFFFFF)",
-            borderRadius: "16px",
-            padding: "24px",
-            boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
-            border: "1px solid var(--color-border-light, #F3F4F6)"
-          }}>
-            <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
-              Presupuesto Diario Restante
+          {/* Presupuesto Diario Restante - solo si hay presupuesto */}
+          {monthlyData?.goalCents > 0 && data && (
+            <div style={{
+              background: "var(--color-bg-white, #FFFFFF)",
+              borderRadius: "16px",
+              padding: "24px",
+              boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+              border: "1px solid var(--color-border-light, #F3F4F6)"
+            }}>
+              <div style={{ color: "var(--color-text-secondary, #6B7280)", fontSize: "14px", marginBottom: "8px", fontWeight: "600" }}>
+                Presupuesto Diario Restante
+              </div>
+              <div style={{ 
+                fontSize: "32px", 
+                fontWeight: "700", 
+                color: (data?.endOfDay?.availableCents || 0) >= 0 ? "var(--color-balance-positive, #059669)" : "var(--color-balance-negative, #B45309)", 
+                marginBottom: "8px" 
+              }}>
+                {fmtMoney(data?.endOfDay?.availableCents || 0, user.currencyCode)}
+              </div>
+              <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
+                {data?.startOfDay?.remainingDaysIncludingToday 
+                  ? `${data.startOfDay.remainingDaysIncludingToday} días restantes`
+                  : "Calculando..."}
+              </div>
             </div>
-            <div className="secondary-number" style={{ color: "var(--color-primary, #4F46E5)", marginBottom: "8px" }}>
-              {(() => {
-                if (!monthlyData || !data) return "...";
-                
-                // Calcular: (Ingresos - Ahorros - Gastos) / días restantes
-                const availableBalance = monthlyData.availableBalance !== undefined 
-                  ? monthlyData.availableBalance 
-                  : (monthlyData.totalIncome - monthlyData.totalExpenses - (monthlyData.goalCents || 0));
-                
-                const remainingDays = data.startOfDay?.remainingDaysIncludingToday || 0;
-                
-                if (remainingDays <= 0) {
-                  return fmtMoney(0, user.currencyCode);
-                }
-                
-                const dailyBudget = Math.floor(availableBalance / remainingDays);
-                return fmtMoney(dailyBudget, user.currencyCode);
-              })()}
-            </div>
-            <div style={{ color: "var(--color-text-tertiary, #9CA3AF)", fontSize: "12px" }}>
-              {data?.startOfDay?.remainingDaysIncludingToday 
-                ? `${data.startOfDay.remainingDaysIncludingToday} días restantes`
-                : "Calculando..."}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Meta de Ahorro */}
