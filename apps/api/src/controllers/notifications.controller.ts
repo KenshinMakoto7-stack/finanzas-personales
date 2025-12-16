@@ -83,26 +83,24 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
 
     const notifications: any[] = [];
 
-    // OPTIMIZACIÓN: Cargar todas las transacciones UNA SOLA VEZ y reutilizarlas
-    const allTransactionsSnapshot = await db.collection("transactions")
-      .where("userId", "==", userId)
-      .get();
-    
-    const allTransactions = allTransactionsSnapshot.docs.map(doc => docToObject(doc));
+    // OPTIMIZACIÓN: Hacer consultas específicas en lugar de cargar todas las transacciones
+    // Esto reduce significativamente el tiempo de respuesta
 
     // 1. Verificar transacciones recurrentes que deben ejecutarse hoy
     const tomorrow = new Date(targetDate);
     tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(23, 59, 59, 999);
     const tomorrowTimestamp = Timestamp.fromDate(tomorrow);
 
-    // Filtrar en memoria: transacciones recurrentes con nextOccurrence <= tomorrow
-    const recurringTransactions = allTransactions.filter((tx: any) => {
-      return tx.isRecurring === true && 
-             tx.nextOccurrence && 
-             (tx.nextOccurrence instanceof Timestamp 
-               ? tx.nextOccurrence <= tomorrowTimestamp 
-               : new Date(tx.nextOccurrence).getTime() <= tomorrow.getTime());
-    });
+    // Consulta optimizada: solo transacciones recurrentes con nextOccurrence <= tomorrow
+    const recurringSnapshot = await db.collection("transactions")
+      .where("userId", "==", userId)
+      .where("isRecurring", "==", true)
+      .where("nextOccurrence", "<=", tomorrowTimestamp)
+      .limit(100) // Límite razonable para transacciones recurrentes
+      .get();
+    
+    const recurringTransactions = recurringSnapshot.docs.map(doc => docToObject(doc));
 
     // Cargar relaciones
     const categoryIds = [...new Set(recurringTransactions.map((t: any) => t.categoryId).filter(Boolean))];
@@ -164,30 +162,27 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
 
     const budgetCategoriesMap = new Map(budgetCategories.map((c: any) => [c.id, c]));
 
-    // OPTIMIZACIÓN: Reutilizar allTransactions ya cargadas anteriormente
-    const monthStartTime = monthStart.getTime();
-    const monthEndTime = monthEnd.getTime();
+    // OPTIMIZACIÓN: Cargar todas las transacciones del mes actual de una vez
+    // Esto es más eficiente que hacer múltiples consultas
+    const monthStartTimestamp = Timestamp.fromDate(monthStart);
+    const monthEndDate = new Date(monthEnd);
+    monthEndDate.setHours(23, 59, 59, 999);
+    const monthEndTimestamp = Timestamp.fromDate(monthEndDate);
+    
+    // Cargar todas las transacciones del mes (tanto ingresos como gastos)
+    const monthTransactionsSnapshot = await db.collection("transactions")
+      .where("userId", "==", userId)
+      .where("occurredAt", ">=", monthStartTimestamp)
+      .where("occurredAt", "<=", monthEndTimestamp)
+      .limit(500) // Límite razonable para transacciones del mes
+      .get();
+    
+    const monthTransactions = monthTransactionsSnapshot.docs.map(doc => docToObject(doc));
 
     for (const budget of budgets) {
-      // Filtrar transacciones en memoria para evitar índices compuestos
-      const expenses = allTransactions.filter((tx: any) => {
-        try {
-          if (!tx.occurredAt) return false;
-          // Usar la función helper para convertir correctamente
-          const txDate = fromFirestoreTimestamp(tx.occurredAt) || 
-                        (tx.occurredAt instanceof Date ? tx.occurredAt : null) ||
-                        (typeof tx.occurredAt === 'string' || typeof tx.occurredAt === 'number' ? new Date(tx.occurredAt) : null);
-          
-          if (!txDate || isNaN(txDate.getTime())) return false;
-          const txTime = txDate.getTime();
-          return tx.type === "EXPENSE" 
-            && tx.categoryId === budget.categoryId
-            && txTime >= monthStartTime 
-            && txTime <= monthEndTime;
-        } catch (error) {
-          console.error("Error procesando transacción para presupuesto:", error, tx.id);
-          return false;
-        }
+      // Filtrar transacciones del mes por categoría y tipo EXPENSE
+      const expenses = monthTransactions.filter((tx: any) => {
+        return tx.type === "EXPENSE" && tx.categoryId === budget.categoryId;
       });
 
       const spentCents = expenses.reduce((sum: number, tx: any) => {
@@ -229,20 +224,13 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
     if (!goalSnapshot.empty) {
       const goal = docToObject(goalSnapshot.docs[0]);
 
-      // Usar las transacciones ya obtenidas anteriormente para evitar índices compuestos
-      // Filtrar en memoria las transacciones del mes
-      const transactions = allTransactions.filter((tx: any) => {
-        const txDate = tx.occurredAt instanceof Date ? tx.occurredAt : new Date(tx.occurredAt);
-        const txTime = txDate.getTime();
-        return txTime >= monthStartTime && txTime <= monthEndTime;
-      });
-
-      const totalIncome = transactions
+      // OPTIMIZACIÓN: Reutilizar monthTransactions ya cargadas (incluyen ingresos y gastos)
+      const totalIncome = monthTransactions
         .filter((t: any) => t.type === "INCOME")
-        .reduce((sum, t: any) => sum + t.amountCents, 0);
-      const totalExpenses = transactions
+        .reduce((sum, t: any) => sum + (t.amountCents || 0), 0);
+      const totalExpenses = monthTransactions
         .filter((t: any) => t.type === "EXPENSE")
-        .reduce((sum, t: any) => sum + t.amountCents, 0);
+        .reduce((sum, t: any) => sum + (t.amountCents || 0), 0);
 
       const saved = totalIncome - totalExpenses;
       const progress = goal.savingGoalCents > 0
