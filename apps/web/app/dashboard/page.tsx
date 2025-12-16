@@ -74,26 +74,40 @@ export default function Dashboard() {
       const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
       const monthEnd = `${year}-${String(month).padStart(2, "0")}-${new Date(year, month, 0).getDate()}`;
       
-      // Cargar últimos 6 meses para gráfico de tendencias
-      const sixMonthsAgo = new Date(year, month - 6, 1);
-      const historicalStart = `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth() + 1).padStart(2, "0")}-01`;
-      
-      const [transactionsRes, statsRes, goalsRes, historicalRes] = await Promise.all([
+      // OPTIMIZACIÓN: Cargar datos esenciales primero, datos históricos después (lazy loading)
+      const [transactionsRes, statsRes, goalsRes] = await Promise.all([
         api.get(`/transactions?from=${monthStart}&to=${monthEnd}&pageSize=100`),
         api.get(`/statistics/expenses-by-category?year=${year}&month=${month}&period=month`),
-        api.get(`/goals?year=${year}&month=${month}`).catch(() => ({ data: { goal: null } })),
-        api.get(`/transactions?from=${historicalStart}&to=${monthEnd}&pageSize=500`).catch(() => ({ data: { transactions: [] } }))
+        api.get(`/goals?year=${year}&month=${month}`).catch(() => ({ data: { goal: null } }))
       ]);
+      
+      // Cargar datos históricos en paralelo pero no bloquear la renderización inicial
+      const historicalPromise = (async () => {
+        const sixMonthsAgo = new Date(year, month - 6, 1);
+        const historicalStart = `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth() + 1).padStart(2, "0")}-01`;
+        try {
+          const historicalRes = await api.get(`/transactions?from=${historicalStart}&to=${monthEnd}&pageSize=500`);
+          return historicalRes.data.transactions || [];
+        } catch {
+          return [];
+        }
+      })();
 
       const transactions = transactionsRes.data.transactions || [];
       
-      // Obtener tipo de cambio USD/UYU con fallback más realista
-      // Nota: El rate por defecto debe actualizarse periódicamente o usar un servicio de respaldo
+      // OPTIMIZACIÓN: Obtener tipo de cambio en paralelo con otras operaciones
       const DEFAULT_USD_UYU_RATE = 42.0; // Actualizado Nov 2025
-      const exchangeRateRes = await api.get("/exchange/rate").catch((err) => {
+      const exchangeRatePromise = api.get("/exchange/rate").catch((err) => {
         console.warn("Error obteniendo tipo de cambio, usando fallback:", err?.message);
         return { data: { rate: DEFAULT_USD_UYU_RATE } };
       });
+      
+      // Cargar cuentas y tipo de cambio en paralelo
+      const [accountsRes, exchangeRateRes] = await Promise.all([
+        api.get("/accounts").catch(() => ({ data: { accounts: [] } })),
+        exchangeRatePromise
+      ]);
+      
       const usdToUyuRate = exchangeRateRes.data.rate || DEFAULT_USD_UYU_RATE;
       
       // Convertir todas las transacciones a la moneda base del usuario (UYU)
@@ -117,7 +131,6 @@ export default function Dashboard() {
         .reduce((sum: number, t: any) => sum + convertToBase(t.amountCents, t.currencyCode || baseCurrency), 0);
       
       // Calcular ahorro dirigido: transferencias a cuentas de tipo SAVINGS o ingresos directos a cuentas SAVINGS
-      const accountsRes = await api.get("/accounts").catch(() => ({ data: { accounts: [] } }));
       const savingsAccounts = accountsRes.data.accounts
         .filter((a: any) => a.type === "SAVINGS")
         .map((a: any) => a.id);
@@ -167,44 +180,57 @@ export default function Dashboard() {
         setGoalData(null);
       }
 
-      // Preparar datos para gráficos (convertir todas las monedas)
-      const historicalTransactions = historicalRes.data.transactions || [];
-      const monthlyTrends: { [key: string]: { income: number; expense: number } } = {};
-      
-      historicalTransactions.forEach((tx: any) => {
-        const txDate = new Date(tx.occurredAt);
-        const monthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, "0")}`;
-        if (!monthlyTrends[monthKey]) {
-          monthlyTrends[monthKey] = { income: 0, expense: 0 };
-        }
-        const convertedAmount = convertToBase(tx.amountCents, tx.currencyCode || baseCurrency);
-        if (tx.type === "INCOME") {
-          monthlyTrends[monthKey].income += convertedAmount;
-        } else if (tx.type === "EXPENSE") {
-          monthlyTrends[monthKey].expense += convertedAmount;
-        }
-      });
+      // OPTIMIZACIÓN: Cargar datos históricos para gráficos de forma lazy (no bloquea renderización)
+      historicalPromise.then((historicalTransactions) => {
+        const monthlyTrends: { [key: string]: { income: number; expense: number } } = {};
+        
+        historicalTransactions.forEach((tx: any) => {
+          const txDate = new Date(tx.occurredAt);
+          const monthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, "0")}`;
+          if (!monthlyTrends[monthKey]) {
+            monthlyTrends[monthKey] = { income: 0, expense: 0 };
+          }
+          const convertedAmount = convertToBase(tx.amountCents, tx.currencyCode || baseCurrency);
+          if (tx.type === "INCOME") {
+            monthlyTrends[monthKey].income += convertedAmount;
+          } else if (tx.type === "EXPENSE") {
+            monthlyTrends[monthKey].expense += convertedAmount;
+          }
+        });
 
-      const chartDataArray = Object.keys(monthlyTrends)
-        .sort()
-        .map(key => ({
-          month: key,
-          Ingresos: monthlyTrends[key].income / 100,
-          Gastos: monthlyTrends[key].expense / 100,
-          Balance: (monthlyTrends[key].income - monthlyTrends[key].expense) / 100
-        }));
-      
-      setChartData(chartDataArray);
+        const chartDataArray = Object.keys(monthlyTrends)
+          .sort()
+          .map(key => ({
+            month: key,
+            Ingresos: monthlyTrends[key].income / 100,
+            Gastos: monthlyTrends[key].expense / 100,
+            Balance: (monthlyTrends[key].income - monthlyTrends[key].expense) / 100
+          }));
+        
+        setChartData(chartDataArray);
+      }).catch((err) => {
+        console.error("Error loading historical data for charts:", err);
+        setChartData([]);
+      });
 
       // Calcular datos del día (SIEMPRE, no solo si es el mes actual)
       const todayStr = today.toISOString().slice(0, 10);
       
-      // Calcular gasto acumulado del día (convertido a moneda base)
-      // Excluir transferencias (tienen transferId) pero incluir pagos de deuda
-      const todayTransactions = await api.get(`/transactions?from=${todayStr}&to=${todayStr}&pageSize=100`);
-      const todayExpenses = (todayTransactions.data.transactions || [])
-        .filter((t: any) => t.type === "EXPENSE" && !t.transferId) // Excluir transferencias
-        .reduce((sum: number, t: any) => sum + convertToBase(t.amountCents, t.currencyCode || baseCurrency), 0);
+      // OPTIMIZACIÓN: Calcular gasto del día en paralelo con otras operaciones
+      // Si no hay transacciones del mes, probablemente tampoco hay del día
+      const todayExpensesPromise = transactions.length > 0
+        ? api.get(`/transactions?from=${todayStr}&to=${todayStr}&pageSize=100`)
+            .then((res: any) => {
+              const todayTx = res.data.transactions || [];
+              return todayTx
+                .filter((t: any) => t.type === "EXPENSE" && !t.transferId)
+                .reduce((sum: number, t: any) => sum + convertToBase(t.amountCents, t.currencyCode || baseCurrency), 0);
+            })
+            .catch(() => 0)
+        : Promise.resolve(0);
+      
+      // Esperar solo lo esencial para mostrar datos iniciales
+      const todayExpenses = await todayExpensesPromise;
       
       // Calcular presupuesto usando datos del backend (budget service)
       // El backend ya calcula todo correctamente con conversión de moneda
