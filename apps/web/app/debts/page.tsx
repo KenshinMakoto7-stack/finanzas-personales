@@ -857,7 +857,6 @@ export default function DebtsPage() {
                           {info.isActive ? (
                             <>
                               <div><strong>Cuotas restantes:</strong> {info.remainingInstallments}</div>
-                              <div><strong>Meses restantes:</strong> {info.monthsRemaining}</div>
                               <div><strong>Fin estimado:</strong> {fmtDateUTC(info.endDate)}</div>
                             </>
                           ) : (

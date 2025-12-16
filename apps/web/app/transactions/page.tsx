@@ -522,7 +522,7 @@ export default function TransactionsPage() {
                           )}
                         </div>
                       </div>
-                      <div style={{ textAlign: "right" }}>
+                      <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
                         <div style={{
                           fontSize: "20px",
                           fontWeight: "700",
@@ -536,6 +536,22 @@ export default function TransactionsPage() {
                             TC: {tx.exchangeRate.toFixed(2)}
                           </div>
                         )}
+                        <Link
+                          href={`/transactions/edit/${tx.id}`}
+                          style={{
+                            padding: "6px 12px",
+                            background: "#667eea",
+                            color: "white",
+                            textDecoration: "none",
+                            borderRadius: "6px",
+                            fontSize: "12px",
+                            fontWeight: "600",
+                            display: "inline-block",
+                            marginTop: "4px"
+                          }}
+                        >
+                          Editar
+                        </Link>
                       </div>
                     </div>
                   </div>
