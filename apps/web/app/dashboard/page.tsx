@@ -236,9 +236,13 @@ export default function Dashboard() {
       // El backend ya calcula todo correctamente con conversión de moneda
       const dailyBudgetCents = data?.startOfDay?.dailyTargetCents || 0;
       // Presupuesto Diario Restante = presupuesto diario de hoy - gastos de hoy
-      // O usar rolloverFromTodayCents si está disponible (ya calculado en backend)
+      // El backend calcula rolloverFromTodayCents = max(dailyTargetTodayStartCents - spentTodayCents, 0)
+      // Pero si es 0 porque se gastó más de lo asignado, debemos mostrar el valor negativo
+      // Por eso calculamos directamente: dailyBudgetCents - todayExpenses (puede ser negativo)
       const rolloverCents = data?.endOfDay?.rolloverFromTodayCents;
-      const remainingTodayCents = rolloverCents !== undefined 
+      // Si rolloverCents es 0 pero dailyBudgetCents > 0 y todayExpenses < dailyBudgetCents,
+      // entonces el backend calculó mal o hay un problema. Usamos nuestro cálculo.
+      const remainingTodayCents = (rolloverCents !== undefined && rolloverCents > 0) 
         ? rolloverCents 
         : dailyBudgetCents - todayExpenses; // Puede ser negativo
       const dailyTargetTomorrowCents = data?.endOfDay?.dailyTargetTomorrowCents || 0;
