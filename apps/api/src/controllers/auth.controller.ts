@@ -226,7 +226,9 @@ export async function me(req: AuthRequest, res: Response) {
         name: userData.name,
         currencyCode: userData.currencyCode || "USD",
         locale: userData.locale || "en-US",
-        timeZone: userData.timeZone || "UTC"
+        timeZone: userData.timeZone || "UTC",
+        defaultAccountId: userData.defaultAccountId || null,
+        defaultCategoryId: userData.defaultCategoryId || null
       }
     });
   } catch (error: any) {
@@ -240,13 +242,15 @@ export async function me(req: AuthRequest, res: Response) {
  */
 export async function updatePrefs(req: AuthRequest, res: Response) {
   try {
-    const { currencyCode, locale, timeZone, name } = req.body || {};
+    const { currencyCode, locale, timeZone, name, defaultAccountId, defaultCategoryId } = req.body || {};
     
     const updateData: any = {};
     if (currencyCode !== undefined) updateData.currencyCode = currencyCode;
     if (locale !== undefined) updateData.locale = locale;
     if (timeZone !== undefined) updateData.timeZone = timeZone;
     if (name !== undefined) updateData.name = name;
+    if (defaultAccountId !== undefined) updateData.defaultAccountId = defaultAccountId;
+    if (defaultCategoryId !== undefined) updateData.defaultCategoryId = defaultCategoryId;
 
     await db.collection("users").doc(req.user!.userId).update(objectToFirestore(updateData));
 
@@ -266,7 +270,9 @@ export async function updatePrefs(req: AuthRequest, res: Response) {
         name: userData.name,
         currencyCode: userData.currencyCode || "USD",
         locale: userData.locale || "en-US",
-        timeZone: userData.timeZone || "UTC"
+        timeZone: userData.timeZone || "UTC",
+        defaultAccountId: userData.defaultAccountId || null,
+        defaultCategoryId: userData.defaultCategoryId || null
       }
     });
   } catch (error: any) {

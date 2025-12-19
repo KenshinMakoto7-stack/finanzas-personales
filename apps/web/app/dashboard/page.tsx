@@ -40,6 +40,19 @@ export default function Dashboard() {
   const [activeLimitAlerts, setActiveLimitAlerts] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0); // Key para forzar recarga
   const loadingRef = useRef(false); // Flag para prevenir llamadas duplicadas
+  
+  // Estados para atajo rápido
+  const [quickAmount, setQuickAmount] = useState("");
+  const [showQuickConfirm, setShowQuickConfirm] = useState(false);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [defaultAccount, setDefaultAccount] = useState<any>(null);
+  const [defaultCategory, setDefaultCategory] = useState<any>(null);
+  const [creatingQuickTx, setCreatingQuickTx] = useState(false);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
+  const [savingConfig, setSavingConfig] = useState(false);
 
   // Memoizar loadData para evitar recreaciones innecesarias y cumplir con reglas de hooks
   const loadData = useCallback(async () => {
@@ -340,6 +353,70 @@ export default function Dashboard() {
         console.error("Error loading active limit alerts:", err);
         setActiveLimitAlerts([]);
       }
+
+      // Cargar cuentas y categorías para atajo rápido
+      try {
+        const [accountsRes, categoriesRes, userRes] = await Promise.all([
+          api.get("/accounts"),
+          api.get("/categories?tree=true"),
+          api.get("/auth/me")
+        ]);
+        const accountsList = accountsRes.data.accounts || [];
+        const categoriesList = categoriesRes.data.flat || [];
+        setAccounts(accountsList);
+        setCategories(categoriesList);
+        
+        // Configurar cuenta y categoría predeterminadas
+        const userData = userRes.data.user;
+        if (userData?.defaultAccountId) {
+          const acc = accountsList.find((a: any) => a.id === userData.defaultAccountId);
+          setDefaultAccount(acc || null);
+          setSelectedAccountId(userData.defaultAccountId);
+        } else if (accountsList.length > 0) {
+          setDefaultAccount(accountsList[0]);
+          setSelectedAccountId(accountsList[0].id);
+        }
+        
+        if (userData?.defaultCategoryId) {
+          // Buscar en todas las categorías (padres e hijas)
+          const findCategory = (cats: any[], id: string): any => {
+            for (const cat of cats) {
+              if (cat.id === id) return cat;
+              if (cat.children) {
+                const found = findCategory(cat.children, id);
+                if (found) return found;
+              }
+            }
+            return null;
+          };
+          const cat = findCategory(categoriesList, userData.defaultCategoryId);
+          setDefaultCategory(cat || null);
+          setSelectedCategoryId(userData.defaultCategoryId);
+        } else {
+          // Buscar primera categoría de gasto
+          const findFirstExpenseCategory = (cats: any[]): any => {
+            for (const cat of cats) {
+              if (cat.type === "EXPENSE") {
+                // Si tiene hijos, usar el primer hijo, sino usar la categoría misma
+                if (cat.children && cat.children.length > 0) {
+                  return cat.children[0];
+                }
+                return cat;
+              }
+              if (cat.children) {
+                const found = findFirstExpenseCategory(cat.children);
+                if (found) return found;
+              }
+            }
+            return null;
+          };
+          const firstExpense = findFirstExpenseCategory(categoriesList);
+          setDefaultCategory(firstExpense);
+          if (firstExpense) setSelectedCategoryId(firstExpense.id);
+        }
+      } catch (err) {
+        console.error("Error loading accounts/categories for quick add:", err);
+      }
     } catch (err: any) {
       setError(err?.response?.data?.error ?? "Error al cargar los datos");
       if (err?.response?.status === 401) {
@@ -351,6 +428,97 @@ export default function Dashboard() {
       loadingRef.current = false;
     }
   }, [selectedDate, user, logout, router]); // Dependencias correctas de loadData
+
+  // Funciones para atajo rápido
+  const handleQuickSubmit = () => {
+    const amount = parseFloat(quickAmount.replace(/[^\d.,]/g, "").replace(",", "."));
+    if (!amount || amount <= 0) {
+      alert("Por favor ingresa un monto válido");
+      return;
+    }
+    if (!defaultAccount) {
+      alert("Por favor configura una cuenta predeterminada en Configuración");
+      return;
+    }
+    if (!defaultCategory) {
+      alert("Por favor configura una categoría predeterminada en Configuración");
+      return;
+    }
+    setShowQuickConfirm(true);
+  };
+
+  const handleQuickConfirm = async () => {
+    if (!defaultAccount || !defaultCategory) return;
+    
+    setCreatingQuickTx(true);
+    try {
+      const amount = parseFloat(quickAmount.replace(/[^\d.,]/g, "").replace(",", "."));
+      const amountCents = Math.round(amount * 100);
+      
+      await api.post("/transactions", {
+        type: "EXPENSE",
+        accountId: defaultAccount.id,
+        categoryId: defaultCategory.id,
+        amountCents,
+        currencyCode: defaultAccount.currencyCode || user?.currencyCode || "UYU",
+        occurredAt: new Date().toISOString(),
+        description: `Gasto rápido - ${defaultCategory.name}`
+      });
+      
+      setQuickAmount("");
+      setShowQuickConfirm(false);
+      // Recargar datos
+      loadData();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || "Error al crear la transacción");
+    } finally {
+      setCreatingQuickTx(false);
+    }
+  };
+
+  const handleSaveConfig = async () => {
+    if (!selectedAccountId || !selectedCategoryId) {
+      alert("Por favor selecciona una cuenta y una categoría");
+      return;
+    }
+    
+    setSavingConfig(true);
+    try {
+      await api.put("/auth/prefs", {
+        defaultAccountId: selectedAccountId,
+        defaultCategoryId: selectedCategoryId
+      });
+      
+      // Actualizar estado local
+      const acc = accounts.find((a: any) => a.id === selectedAccountId);
+      const findCategory = (cats: any[], id: string): any => {
+        for (const cat of cats) {
+          if (cat.id === id) return cat;
+          if (cat.children) {
+            const found = findCategory(cat.children, id);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      const cat = findCategory(categories, selectedCategoryId);
+      
+      setDefaultAccount(acc || null);
+      setDefaultCategory(cat || null);
+      setShowConfigModal(false);
+      
+      // Recargar usuario para actualizar preferencias
+      const userRes = await api.get("/auth/me");
+      if (userRes.data.user) {
+        // Actualizar estado de auth si es necesario
+        initAuth();
+      }
+    } catch (err: any) {
+      alert(err?.response?.data?.error || "Error al guardar configuración");
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   // Detectar cuando la página gana foco (usuario vuelve de otra página)
   useEffect(() => {
@@ -728,6 +896,438 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Atajo Rápido para Gastos */}
+        <div style={{
+          background: "var(--color-bg-white, #FFFFFF)",
+          borderRadius: isMobile ? "16px" : "20px",
+          padding: isMobile ? "16px" : "20px 24px",
+          marginBottom: isMobile ? "16px" : "24px",
+          boxShadow: "var(--shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1))",
+          border: "2px solid var(--color-primary, #4F46E5)",
+          borderLeftWidth: "6px"
+        }}>
+          <div style={{
+            fontSize: isMobile ? "14px" : "16px",
+            fontWeight: "600",
+            color: "var(--color-text-primary, #111827)",
+            marginBottom: isMobile ? "12px" : "16px",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
+          }}>
+            ⚡ Gasto Rápido
+          </div>
+          <div style={{
+            display: "flex",
+            gap: isMobile ? "8px" : "12px",
+            flexWrap: "wrap",
+            alignItems: "flex-end"
+          }}>
+            <div style={{ flex: isMobile ? "1 1 100%" : "1 1 auto", minWidth: isMobile ? "100%" : "200px" }}>
+              <label style={{
+                display: "block",
+                fontSize: "12px",
+                fontWeight: "600",
+                color: "var(--color-text-secondary, #6B7280)",
+                marginBottom: "6px"
+              }}>
+                Monto
+              </label>
+              <input
+                type="text"
+                value={quickAmount}
+                onChange={(e) => setQuickAmount(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === "Enter") {
+                    handleQuickSubmit();
+                  }
+                }}
+                placeholder="Ej: 500"
+                style={{
+                  width: "100%",
+                  padding: isMobile ? "12px" : "14px 16px",
+                  fontSize: isMobile ? "16px" : "18px",
+                  fontWeight: "600",
+                  border: "2px solid var(--color-border, #E5E7EB)",
+                  borderRadius: "12px",
+                  outline: "none",
+                  transition: "all 0.2s",
+                  fontFamily: "'Inter', sans-serif"
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-primary, #4F46E5)";
+                  e.currentTarget.style.boxShadow = "0 0 0 3px rgba(79, 70, 229, 0.1)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-border, #E5E7EB)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              />
+            </div>
+            <button
+              onClick={handleQuickSubmit}
+              disabled={!quickAmount || !defaultAccount || !defaultCategory || creatingQuickTx}
+              style={{
+                padding: isMobile ? "12px 20px" : "14px 24px",
+                fontSize: isMobile ? "14px" : "16px",
+                fontWeight: "700",
+                color: "white",
+                background: (!quickAmount || !defaultAccount || !defaultCategory || creatingQuickTx)
+                  ? "#9CA3AF"
+                  : "var(--color-primary, #4F46E5)",
+                border: "none",
+                borderRadius: "12px",
+                cursor: (!quickAmount || !defaultAccount || !defaultCategory || creatingQuickTx) ? "not-allowed" : "pointer",
+                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                transition: "all 0.2s",
+                whiteSpace: "nowrap",
+                fontFamily: "'Inter', sans-serif"
+              }}
+              onMouseEnter={(e) => {
+                if (!(!quickAmount || !defaultAccount || !defaultCategory || creatingQuickTx)) {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 6px 12px -2px rgba(79, 70, 229, 0.3)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 4px 6px -1px rgba(0, 0, 0, 0.1)";
+              }}
+            >
+              {creatingQuickTx ? "⏳ Creando..." : "✓ Confirmar"}
+            </button>
+          </div>
+          <div style={{
+            marginTop: isMobile ? "10px" : "12px",
+            fontSize: "12px",
+            color: "var(--color-text-tertiary, #9CA3AF)",
+            display: "flex",
+            gap: "12px",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between"
+          }}>
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+              {defaultAccount && (
+                <span>💳 {defaultAccount.name}</span>
+              )}
+              {defaultCategory && (
+                <span>📁 {defaultCategory.name}</span>
+              )}
+              {(!defaultAccount || !defaultCategory) && (
+                <span style={{ color: "#F59E0B" }}>
+                  ⚠️ Configura cuenta y categoría predeterminadas
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => setShowConfigModal(true)}
+              style={{
+                padding: "6px 12px",
+                fontSize: "11px",
+                fontWeight: "600",
+                color: "var(--color-primary, #4F46E5)",
+                background: "transparent",
+                border: "1px solid var(--color-primary, #4F46E5)",
+                borderRadius: "6px",
+                cursor: "pointer",
+                transition: "all 0.2s"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--color-primary, #4F46E5)";
+                e.currentTarget.style.color = "white";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "var(--color-primary, #4F46E5)";
+              }}
+            >
+              ⚙️ Configurar
+            </button>
+          </div>
+        </div>
+
+        {/* Modal de Configuración */}
+        {showConfigModal && (
+          <div style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: isMobile ? "16px" : "20px"
+          }}
+          onClick={() => setShowConfigModal(false)}
+          >
+            <div style={{
+              background: "white",
+              borderRadius: "16px",
+              padding: isMobile ? "20px" : "24px",
+              maxWidth: "500px",
+              width: "100%",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
+              border: "1px solid var(--color-border-light, #F3F4F6)"
+            }}
+            onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{
+                fontSize: isMobile ? "18px" : "20px",
+                fontWeight: "700",
+                color: "var(--color-text-primary, #111827)",
+                marginBottom: "20px"
+              }}>
+                ⚙️ Configurar Atajo Rápido
+              </h3>
+              
+              <div style={{ marginBottom: "20px" }}>
+                <label style={{
+                  display: "block",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  color: "var(--color-text-primary, #111827)",
+                  marginBottom: "8px"
+                }}>
+                  Cuenta Predeterminada
+                </label>
+                <select
+                  value={selectedAccountId}
+                  onChange={(e) => setSelectedAccountId(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    fontSize: "14px",
+                    border: "2px solid var(--color-border, #E5E7EB)",
+                    borderRadius: "8px",
+                    outline: "none",
+                    cursor: "pointer"
+                  }}
+                >
+                  <option value="">Selecciona una cuenta</option>
+                  {accounts.map((acc: any) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name} ({acc.currencyCode})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "20px" }}>
+                <label style={{
+                  display: "block",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  color: "var(--color-text-primary, #111827)",
+                  marginBottom: "8px"
+                }}>
+                  Categoría Predeterminada
+                </label>
+                <select
+                  value={selectedCategoryId}
+                  onChange={(e) => setSelectedCategoryId(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    fontSize: "14px",
+                    border: "2px solid var(--color-border, #E5E7EB)",
+                    borderRadius: "8px",
+                    outline: "none",
+                    cursor: "pointer"
+                  }}
+                >
+                  <option value="">Selecciona una categoría</option>
+                  {categories
+                    .filter((cat: any) => cat.type === "EXPENSE")
+                    .map((cat: any) => (
+                      <optgroup key={cat.id} label={cat.name}>
+                        {cat.children && cat.children.length > 0 ? (
+                          cat.children.map((subcat: any) => (
+                            <option key={subcat.id} value={subcat.id}>
+                              {cat.name} → {subcat.name}
+                            </option>
+                          ))
+                        ) : (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </option>
+                        )}
+                      </optgroup>
+                    ))}
+                </select>
+              </div>
+
+              <div style={{
+                display: "flex",
+                gap: "12px",
+                justifyContent: "flex-end"
+              }}>
+                <button
+                  onClick={() => setShowConfigModal(false)}
+                  style={{
+                    padding: "10px 20px",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "var(--color-text-secondary, #6B7280)",
+                    background: "#F3F4F6",
+                    border: "none",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveConfig}
+                  disabled={savingConfig || !selectedAccountId || !selectedCategoryId}
+                  style={{
+                    padding: "10px 20px",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "white",
+                    background: (savingConfig || !selectedAccountId || !selectedCategoryId) ? "#9CA3AF" : "var(--color-primary, #4F46E5)",
+                    border: "none",
+                    borderRadius: "8px",
+                    cursor: (savingConfig || !selectedAccountId || !selectedCategoryId) ? "not-allowed" : "pointer",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  {savingConfig ? "⏳ Guardando..." : "✓ Guardar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Confirmación */}
+        {showQuickConfirm && (
+          <div style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: isMobile ? "16px" : "20px"
+          }}
+          onClick={() => setShowQuickConfirm(false)}
+          >
+            <div style={{
+              background: "white",
+              borderRadius: "16px",
+              padding: isMobile ? "20px" : "24px",
+              maxWidth: "400px",
+              width: "100%",
+              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
+              border: "1px solid var(--color-border-light, #F3F4F6)"
+            }}
+            onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{
+                fontSize: isMobile ? "18px" : "20px",
+                fontWeight: "700",
+                color: "var(--color-text-primary, #111827)",
+                marginBottom: "16px"
+              }}>
+                ⚠️ Confirmar Gasto
+              </h3>
+              <div style={{
+                fontSize: "14px",
+                color: "var(--color-text-secondary, #6B7280)",
+                marginBottom: "20px",
+                lineHeight: "1.6"
+              }}>
+                <p style={{ marginBottom: "12px" }}>
+                  ¿Crear un gasto de <strong style={{ color: "var(--color-text-primary, #111827)" }}>
+                    {fmtMoney(Math.round(parseFloat(quickAmount.replace(/[^\d.,]/g, "").replace(",", ".")) * 100), defaultAccount?.currencyCode || user?.currencyCode || "UYU")}
+                  </strong>?
+                </p>
+                <div style={{
+                  background: "#F9FAFB",
+                  padding: "12px",
+                  borderRadius: "8px",
+                  marginBottom: "12px"
+                }}>
+                  <div style={{ marginBottom: "6px" }}>
+                    <strong>Cuenta:</strong> {defaultAccount?.name || "No configurada"}
+                  </div>
+                  <div>
+                    <strong>Categoría:</strong> {defaultCategory?.name || "No configurada"}
+                  </div>
+                </div>
+                <p style={{ fontSize: "12px", color: "#6B7280" }}>
+                  Este gasto se registrará con la fecha de hoy.
+                </p>
+              </div>
+              <div style={{
+                display: "flex",
+                gap: "12px",
+                justifyContent: "flex-end"
+              }}>
+                <button
+                  onClick={() => setShowQuickConfirm(false)}
+                  style={{
+                    padding: "10px 20px",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "var(--color-text-secondary, #6B7280)",
+                    background: "#F3F4F6",
+                    border: "none",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#E5E7EB";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#F3F4F6";
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleQuickConfirm}
+                  disabled={creatingQuickTx}
+                  style={{
+                    padding: "10px 20px",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "white",
+                    background: creatingQuickTx ? "#9CA3AF" : "var(--color-primary, #4F46E5)",
+                    border: "none",
+                    borderRadius: "8px",
+                    cursor: creatingQuickTx ? "not-allowed" : "pointer",
+                    transition: "all 0.2s"
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!creatingQuickTx) {
+                      e.currentTarget.style.background = "#4338CA";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!creatingQuickTx) {
+                      e.currentTarget.style.background = "var(--color-primary, #4F46E5)";
+                    }
+                  }}
+                >
+                  {creatingQuickTx ? "⏳ Creando..." : "✓ Confirmar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Resumen del Día (siempre visible) */}
         {dailyData !== null && (
