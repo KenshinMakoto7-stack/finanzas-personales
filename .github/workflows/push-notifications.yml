@@ -1,0 +1,20 @@
+name: Push Notifications
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send pending notifications
+        env:
+          API_URL: https://finanzas-api-homa.onrender.com
+          PUSH_NOTIF_TOKEN: ${{ secrets.PUSH_NOTIF_TOKEN }}
+        run: |
+          curl -sS -X POST "$API_URL/notifications/push-pending" \
+            -H "Authorization: Bearer $PUSH_NOTIF_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{}"

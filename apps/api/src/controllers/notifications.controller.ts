@@ -4,6 +4,7 @@ import { AuthRequest } from "../server/middleware/auth.js";
 import { getBudgetSummaryForDate } from "../services/budget.service.js";
 import { docToObject, getDocumentsByIds, fromFirestoreTimestamp } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { getVapidPublicKey, isPushConfigured, sendPushNotification } from "../services/push.service.js";
 
 // Cache simple en memoria para notificaciones (TTL: 2 minutos)
 interface CacheEntry {
@@ -13,6 +14,214 @@ interface CacheEntry {
 
 const notificationsCache = new Map<string, CacheEntry>();
 const CACHE_TTL = 2 * 60 * 1000; // 2 minutos
+
+async function computeNotifications(userId: string, date?: string) {
+  const targetDate = date ? new Date(date) : new Date();
+  const notifications: any[] = [];
+
+  const userDoc = await db.collection("users").doc(userId).get();
+  if (!userDoc.exists) {
+    return notifications;
+  }
+
+  const userData = userDoc.data()!;
+  const tz = userData.timeZone || "UTC";
+
+  const tomorrow = new Date(targetDate);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(23, 59, 59, 999);
+  const tomorrowTimestamp = Timestamp.fromDate(tomorrow);
+
+  const recurringSnapshot = await db.collection("transactions")
+    .where("userId", "==", userId)
+    .where("isRecurring", "==", true)
+    .where("nextOccurrence", "<=", tomorrowTimestamp)
+    .limit(100)
+    .get();
+  
+  const recurringTransactions = recurringSnapshot.docs.map(doc => docToObject(doc));
+
+  const categoryIds = [...new Set(recurringTransactions.map((t: any) => t.categoryId).filter(Boolean))];
+  const categories = await getDocumentsByIds("categories", categoryIds);
+
+  const categoriesMap = new Map(categories.map((c: any) => [c.id, c]));
+
+  recurringTransactions.forEach((tx: any) => {
+    if (tx.nextOccurrence) {
+      try {
+        const txDate = fromFirestoreTimestamp(tx.nextOccurrence) || 
+                      (tx.nextOccurrence instanceof Date ? tx.nextOccurrence : null) ||
+                      (typeof tx.nextOccurrence === "string" || typeof tx.nextOccurrence === "number" ? new Date(tx.nextOccurrence) : null);
+        
+        if (txDate && !isNaN(txDate.getTime())) {
+          const today = new Date(targetDate);
+          today.setHours(0, 0, 0, 0);
+          txDate.setHours(0, 0, 0, 0);
+          if (txDate.getTime() === today.getTime()) {
+            const category = tx.categoryId ? categoriesMap.get(tx.categoryId) : null;
+            notifications.push({
+              type: "RECURRING_TRANSACTION",
+              title: "Transacción Recurrente",
+              message: `Recordatorio: ${tx.description || "Transacción"} - ${category?.name || ""}`,
+              data: { transactionId: tx.id },
+              priority: "high"
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error procesando transacción recurrente:", error, tx.id);
+      }
+    }
+  });
+
+  const [year, month] = [targetDate.getFullYear(), targetDate.getMonth() + 1];
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0);
+
+  const budgetsSnapshot = await db.collection("categoryBudgets")
+    .where("userId", "==", userId)
+    .where("month", "==", Timestamp.fromDate(monthStart))
+    .get();
+
+  const budgets = budgetsSnapshot.docs.map(doc => docToObject(doc));
+
+  const budgetCategoryIds = [...new Set(budgets.map((b: any) => b.categoryId))];
+  const budgetCategories = await getDocumentsByIds("categories", budgetCategoryIds);
+  const budgetCategoriesMap = new Map(budgetCategories.map((c: any) => [c.id, c]));
+
+  const monthEndDate = new Date(monthEnd);
+  monthEndDate.setHours(23, 59, 59, 999);
+  const monthEndTimestamp = Timestamp.fromDate(monthEndDate);
+
+  const monthTransactionsSnapshot = await db.collection("transactions")
+    .where("userId", "==", userId)
+    .where("occurredAt", ">=", Timestamp.fromDate(monthStart))
+    .where("occurredAt", "<=", monthEndTimestamp)
+    .limit(500)
+    .get();
+  
+  const monthTransactions = monthTransactionsSnapshot.docs.map(doc => docToObject(doc));
+
+  const batch = db.batch();
+  let hasUpdates = false;
+
+  for (const budget of budgets) {
+    const expenses = monthTransactions.filter((tx: any) => {
+      return tx.type === "EXPENSE" && tx.categoryId === budget.categoryId;
+    });
+
+    const spentCents = expenses.reduce((sum: number, tx: any) => {
+      return sum + (tx.amountCents || 0);
+    }, 0);
+
+    const percentage = budget.budgetCents > 0
+      ? Math.round((spentCents / budget.budgetCents) * 100)
+      : 0;
+
+    let alertThresholds: number[] = [];
+    if (budget.alertThresholds && Array.isArray(budget.alertThresholds)) {
+      alertThresholds = budget.alertThresholds.sort((a, b) => a - b);
+    } else if (budget.alertThreshold !== undefined) {
+      alertThresholds = [budget.alertThreshold];
+    }
+
+    if (alertThresholds.length === 0) continue;
+
+    const category = budgetCategoriesMap.get(budget.categoryId);
+    const triggeredThresholds = budget.triggeredThresholds || [];
+    const reachedThresholds = alertThresholds.filter(threshold => percentage >= threshold);
+    const newThresholds = reachedThresholds.filter(t => !triggeredThresholds.includes(t));
+
+    if (newThresholds.length > 0) {
+      const highestNewThreshold = Math.max(...newThresholds);
+      notifications.push({
+        type: "LIMIT_ALERT",
+        title: "Alerta de Límite",
+        message: `Has alcanzado el ${highestNewThreshold}% del límite de ${category?.name || "Categoría"}`,
+        data: { limitId: budget.id, categoryId: budget.categoryId, threshold: highestNewThreshold },
+        priority: highestNewThreshold >= 90 ? "high" : "normal"
+      });
+
+      const budgetRef = db.collection("categoryBudgets").doc(budget.id);
+      batch.update(budgetRef, {
+        triggeredThresholds: reachedThresholds,
+        updatedAt: Timestamp.now()
+      });
+      hasUpdates = true;
+    } else if (percentage >= 100 && !triggeredThresholds.includes(100)) {
+      notifications.push({
+        type: "LIMIT_EXCEEDED",
+        title: "Límite Excedido",
+        message: `Has excedido el límite de ${category?.name || "Categoría"}`,
+        data: { limitId: budget.id, categoryId: budget.categoryId },
+        priority: "high"
+      });
+
+      const budgetRef = db.collection("categoryBudgets").doc(budget.id);
+      batch.update(budgetRef, {
+        triggeredThresholds: [...reachedThresholds, 100],
+        updatedAt: Timestamp.now()
+      });
+      hasUpdates = true;
+    }
+  }
+
+  if (hasUpdates) {
+    await batch.commit();
+  }
+
+  const goalSnapshot = await db.collection("monthlyGoals")
+    .where("userId", "==", userId)
+    .where("month", "==", Timestamp.fromDate(monthStart))
+    .limit(1)
+    .get();
+
+  if (!goalSnapshot.empty) {
+    const goal = docToObject(goalSnapshot.docs[0]);
+    const totalIncome = monthTransactions
+      .filter((t: any) => t.type === "INCOME")
+      .reduce((sum, t: any) => sum + (t.amountCents || 0), 0);
+    const totalExpenses = monthTransactions
+      .filter((t: any) => t.type === "EXPENSE")
+      .reduce((sum, t: any) => sum + (t.amountCents || 0), 0);
+
+    const saved = totalIncome - totalExpenses;
+    const progress = goal.savingGoalCents > 0
+      ? Math.round((saved / goal.savingGoalCents) * 100)
+      : 0;
+
+    if (progress >= 100) {
+      notifications.push({
+        type: "GOAL_ACHIEVED",
+        title: "¡Meta Alcanzada! 🎉",
+        message: `Has alcanzado tu meta de ahorro del mes`,
+        data: { goalId: goal.id },
+        priority: "high"
+      });
+    } else if (progress >= 75 && progress < 100) {
+      notifications.push({
+        type: "GOAL_PROGRESS",
+        title: "Progreso en Meta",
+        message: `Llevas el ${progress}% de tu meta de ahorro`,
+        data: { goalId: goal.id },
+        priority: "normal"
+      });
+    }
+  }
+
+  const budgetSummary = await getBudgetSummaryForDate(userId, targetDate.toISOString().slice(0, 10), tz);
+  if (budgetSummary.data?.safety?.overspend) {
+    notifications.push({
+      type: "BUDGET_OVERSEND",
+      title: "Presupuesto Excedido",
+      message: "Has gastado por encima del disponible del mes.",
+      data: {},
+      priority: "high"
+    });
+  }
+
+  return notifications;
+}
 
 export async function registerSubscription(req: AuthRequest, res: Response) {
   try {
@@ -57,6 +266,13 @@ export async function registerSubscription(req: AuthRequest, res: Response) {
   }
 }
 
+export async function getVapidPublicKeyEndpoint(req: AuthRequest, res: Response) {
+  if (!isPushConfigured()) {
+    return res.status(404).json({ error: "VAPID no configurado" });
+  }
+  res.json({ publicKey: getVapidPublicKey() });
+}
+
 export async function getPendingNotifications(req: AuthRequest, res: Response) {
   try {
     const userId = req.user!.userId;
@@ -71,253 +287,18 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
       return res.json({ notifications: cached.notifications });
     }
 
-    // Obtener usuario
-    const userDoc = await db.collection("users").doc(userId).get();
-    if (!userDoc.exists) {
-      return res.status(404).json({ error: "Usuario no encontrado" });
-    }
+    const notifications = await computeNotifications(userId, date as string | undefined);
 
-    const userData = userDoc.data()!;
-    const tz = userData.timeZone || "UTC";
-    const targetDate = date ? new Date(date as string) : new Date();
-
-    const notifications: any[] = [];
-
-    // OPTIMIZACIÓN: Hacer consultas específicas en lugar de cargar todas las transacciones
-    // Esto reduce significativamente el tiempo de respuesta
-
-    // 1. Verificar transacciones recurrentes que deben ejecutarse hoy
-    const tomorrow = new Date(targetDate);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(23, 59, 59, 999);
-    const tomorrowTimestamp = Timestamp.fromDate(tomorrow);
-
-    // Consulta optimizada: solo transacciones recurrentes con nextOccurrence <= tomorrow
-    const recurringSnapshot = await db.collection("transactions")
-      .where("userId", "==", userId)
-      .where("isRecurring", "==", true)
-      .where("nextOccurrence", "<=", tomorrowTimestamp)
-      .limit(100) // Límite razonable para transacciones recurrentes
-      .get();
-    
-    const recurringTransactions = recurringSnapshot.docs.map(doc => docToObject(doc));
-
-    // Cargar relaciones
-    const categoryIds = [...new Set(recurringTransactions.map((t: any) => t.categoryId).filter(Boolean))];
-    const accountIds = [...new Set(recurringTransactions.map((t: any) => t.accountId))];
-
-    const [categories, accounts] = await Promise.all([
-      getDocumentsByIds("categories", categoryIds),
-      getDocumentsByIds("accounts", accountIds)
-    ]);
-
-    const categoriesMap = new Map(categories.map((c: any) => [c.id, c]));
-    const accountsMap = new Map(accounts.map((a: any) => [a.id, a]));
-
-    recurringTransactions.forEach((tx: any) => {
-      if (tx.nextOccurrence) {
-        try {
-          // Usar la función helper para convertir correctamente
-          const txDate = fromFirestoreTimestamp(tx.nextOccurrence) || 
-                        (tx.nextOccurrence instanceof Date ? tx.nextOccurrence : null) ||
-                        (typeof tx.nextOccurrence === 'string' || typeof tx.nextOccurrence === 'number' ? new Date(tx.nextOccurrence) : null);
-          
-          if (txDate && !isNaN(txDate.getTime())) {
-            const today = new Date(targetDate);
-            today.setHours(0, 0, 0, 0);
-            txDate.setHours(0, 0, 0, 0);
-            if (txDate.getTime() === today.getTime()) {
-              const category = tx.categoryId ? categoriesMap.get(tx.categoryId) : null;
-              notifications.push({
-                type: "RECURRING_TRANSACTION",
-                title: "Transacción Recurrente",
-                message: `Recordatorio: ${tx.description || "Transacción"} - ${category?.name || ""}`,
-                data: { transactionId: tx.id },
-                priority: "high"
-              });
-            }
-          }
-        } catch (error) {
-          console.error("Error procesando transacción recurrente:", error, tx.id);
-          // Continuar con la siguiente transacción
-        }
-      }
-    });
-
-    // 2. Verificar alertas de presupuesto
-    const [year, month] = [targetDate.getFullYear(), targetDate.getMonth() + 1];
-    const monthStart = new Date(year, month - 1, 1);
-    const monthEnd = new Date(year, month, 0);
-
-    const budgetsSnapshot = await db.collection("categoryBudgets")
-      .where("userId", "==", userId)
-      .where("month", "==", Timestamp.fromDate(monthStart))
-      .get();
-
-    const budgets = budgetsSnapshot.docs.map(doc => docToObject(doc));
-
-    // Cargar categorías
-    const budgetCategoryIds = [...new Set(budgets.map((b: any) => b.categoryId))];
-    const budgetCategories = await getDocumentsByIds("categories", budgetCategoryIds);
-
-    const budgetCategoriesMap = new Map(budgetCategories.map((c: any) => [c.id, c]));
-
-    // OPTIMIZACIÓN: Cargar todas las transacciones del mes actual de una vez
-    // Esto es más eficiente que hacer múltiples consultas
-    const monthStartTimestamp = Timestamp.fromDate(monthStart);
-    const monthEndDate = new Date(monthEnd);
-    monthEndDate.setHours(23, 59, 59, 999);
-    const monthEndTimestamp = Timestamp.fromDate(monthEndDate);
-    
-    // Cargar todas las transacciones del mes (tanto ingresos como gastos)
-    const monthTransactionsSnapshot = await db.collection("transactions")
-      .where("userId", "==", userId)
-      .where("occurredAt", ">=", monthStartTimestamp)
-      .where("occurredAt", "<=", monthEndTimestamp)
-      .limit(500) // Límite razonable para transacciones del mes
-      .get();
-    
-    const monthTransactions = monthTransactionsSnapshot.docs.map(doc => docToObject(doc));
-
-    // Batch para actualizar triggeredThresholds
-    const batch = db.batch();
-    let hasUpdates = false;
-
-    for (const budget of budgets) {
-      // Filtrar transacciones del mes por categoría y tipo EXPENSE
-      const expenses = monthTransactions.filter((tx: any) => {
-        return tx.type === "EXPENSE" && tx.categoryId === budget.categoryId;
-      });
-
-      const spentCents = expenses.reduce((sum: number, tx: any) => {
-        return sum + (tx.amountCents || 0);
-      }, 0);
-
-      const percentage = budget.budgetCents > 0
-        ? Math.round((spentCents / budget.budgetCents) * 100)
-        : 0;
-
-      // Normalizar alertThresholds
-      let alertThresholds: number[] = [];
-      if (budget.alertThresholds && Array.isArray(budget.alertThresholds)) {
-        alertThresholds = budget.alertThresholds.sort((a, b) => a - b);
-      } else if (budget.alertThreshold !== undefined) {
-        // Migración automática: convertir alertThreshold antiguo a array
-        alertThresholds = [budget.alertThreshold];
-      }
-
-      if (alertThresholds.length === 0) continue;
-
-      const category = budgetCategoriesMap.get(budget.categoryId);
-      const triggeredThresholds = budget.triggeredThresholds || [];
-      
-      // Determinar qué umbrales se han alcanzado
-      const reachedThresholds = alertThresholds.filter(threshold => percentage >= threshold);
-      const newThresholds = reachedThresholds.filter(t => !triggeredThresholds.includes(t));
-
-      // Disparar notificaciones solo para umbrales nuevos
-      if (newThresholds.length > 0) {
-        // Disparar notificación para el umbral más alto alcanzado
-        const highestNewThreshold = Math.max(...newThresholds);
-        notifications.push({
-          type: "LIMIT_ALERT",
-          title: "Alerta de Límite",
-          message: `Has alcanzado el ${highestNewThreshold}% del límite de ${category?.name || "Categoría"}`,
-          data: { limitId: budget.id, categoryId: budget.categoryId, threshold: highestNewThreshold },
-          priority: highestNewThreshold >= 90 ? "high" : "normal"
-        });
-
-        // Actualizar triggeredThresholds en batch
-        const budgetRef = db.collection("categoryBudgets").doc(budget.id);
-        batch.update(budgetRef, {
-          triggeredThresholds: reachedThresholds, // Guardar todos los umbrales alcanzados
-          updatedAt: Timestamp.now()
-        });
-        hasUpdates = true;
-      } else if (percentage >= 100 && !triggeredThresholds.includes(100)) {
-        // Notificación especial para exceder el límite (solo si no se había disparado antes)
-        notifications.push({
-          type: "LIMIT_EXCEEDED",
-          title: "Límite Excedido",
-          message: `Has excedido el límite de ${category?.name || "Categoría"}`,
-          data: { limitId: budget.id, categoryId: budget.categoryId },
-          priority: "high"
-        });
-
-        // Marcar 100% como disparado
-        const budgetRef = db.collection("categoryBudgets").doc(budget.id);
-        batch.update(budgetRef, {
-          triggeredThresholds: [...reachedThresholds, 100],
-          updatedAt: Timestamp.now()
-        });
-        hasUpdates = true;
-      }
-    }
-
-    // Ejecutar batch si hay actualizaciones
-    if (hasUpdates) {
-      await batch.commit();
-    }
-
-    // 3. Verificar metas de ahorro
-    const goalSnapshot = await db.collection("monthlyGoals")
-      .where("userId", "==", userId)
-      .where("month", "==", Timestamp.fromDate(monthStart))
-      .limit(1)
-      .get();
-
-    if (!goalSnapshot.empty) {
-      const goal = docToObject(goalSnapshot.docs[0]);
-
-      // OPTIMIZACIÓN: Reutilizar monthTransactions ya cargadas (incluyen ingresos y gastos)
-      const totalIncome = monthTransactions
-        .filter((t: any) => t.type === "INCOME")
-        .reduce((sum, t: any) => sum + (t.amountCents || 0), 0);
-      const totalExpenses = monthTransactions
-        .filter((t: any) => t.type === "EXPENSE")
-        .reduce((sum, t: any) => sum + (t.amountCents || 0), 0);
-
-      const saved = totalIncome - totalExpenses;
-      const progress = goal.savingGoalCents > 0
-        ? Math.round((saved / goal.savingGoalCents) * 100)
-        : 0;
-
-      if (progress >= 100) {
-        notifications.push({
-          type: "GOAL_ACHIEVED",
-          title: "¡Meta Alcanzada! 🎉",
-          message: `Has alcanzado tu meta de ahorro del mes`,
-          data: { goalId: goal.id },
-          priority: "high"
-        });
-      } else if (progress >= 75 && progress < 100) {
-        notifications.push({
-          type: "GOAL_PROGRESS",
-          title: "Progreso en Meta",
-          message: `Llevas el ${progress}% de tu meta de ahorro`,
-          data: { goalId: goal.id },
-          priority: "normal"
-        });
-      }
-    }
-
-    // Guardar en cache
-    notificationsCache.set(cacheKey, {
-      notifications,
-      timestamp: now
-    });
-
-    // Limpiar cache antiguo (más de 5 minutos)
+    notificationsCache.set(cacheKey, { notifications, timestamp: now });
     for (const [key, entry] of notificationsCache.entries()) {
       if (now - entry.timestamp > 5 * 60 * 1000) {
         notificationsCache.delete(key);
       }
     }
 
-    // Agregar headers de cache HTTP (1 minuto)
     res.setHeader('Cache-Control', 'private, max-age=60');
     res.setHeader('ETag', `"${cacheKey}-${now}"`);
-    
+
     res.json({ notifications });
   } catch (error: any) {
     console.error("Error getting notifications:", error);
@@ -331,6 +312,46 @@ export async function getPendingNotifications(req: AuthRequest, res: Response) {
       error: "Error al obtener notificaciones",
       details: process.env.NODE_ENV === "development" ? error?.message : undefined
     });
+  }
+}
+
+export async function pushPendingNotifications(req: AuthRequest, res: Response) {
+  try {
+    const userId = req.user!.userId;
+    if (!isPushConfigured()) {
+      return res.status(400).json({ error: "VAPID no configurado" });
+    }
+
+    const { date } = req.query;
+    const notifications = await computeNotifications(userId, date as string | undefined);
+    const limitedNotifications = notifications.slice(0, 3);
+
+    const subscriptionsSnapshot = await db.collection("notificationSubscriptions")
+      .where("userId", "==", userId)
+      .get();
+
+    const deletions: Promise<any>[] = [];
+    await Promise.all(subscriptionsSnapshot.docs.map(async (doc) => {
+      const sub = doc.data();
+      for (const notification of limitedNotifications) {
+        const result = await sendPushNotification(
+          { endpoint: sub.endpoint, keys: sub.keys },
+          notification
+        );
+        if (result.shouldRemove) {
+          deletions.push(db.collection("notificationSubscriptions").doc(doc.id).delete());
+        }
+      }
+    }));
+
+    if (deletions.length > 0) {
+      await Promise.all(deletions);
+    }
+
+    res.json({ sent: limitedNotifications.length });
+  } catch (error: any) {
+    console.error("Error sending push notifications:", error);
+    res.status(500).json({ error: "Error al enviar notificaciones push" });
   }
 }
 

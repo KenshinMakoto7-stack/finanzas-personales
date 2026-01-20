@@ -30,20 +30,22 @@ function Dashboard({ navigation }: any) {
   useEffect(() => {
     (async ()=>{
       const today = new Date().toISOString().slice(0,10);
-      const res = await axios.get(`${API}/budget/summary?date=${today}`);
-      setData(res.data.data);
+      const res = await axios.get(`${API}/dashboard/summary?date=${today}`);
+      setData(res.data);
     })();
   }, []);
   return (
     <View style={{ padding:16 }}>
       <Text>Resumen</Text>
-      {!data ? <Text>Cargando...</Text> :
+      {!data ? <Text>Cargando...</Text> : (
         <>
-          <Text>Disponible inicio: {data.startOfDay.availableCents/100}</Text>
-          <Text>Promedio hoy: {data.startOfDay.dailyTargetCents/100}</Text>
-          <Text>Promedio mañana: {data.endOfDay.dailyTargetTomorrowCents/100}</Text>
+          <Text>Disponible inicio: {data.budget?.startOfDay?.availableCents / 100}</Text>
+          <Text>Promedio hoy: {data.daily?.dailyBudgetCents / 100}</Text>
+          <Text>Promedio mañana: {data.daily?.dailyTargetTomorrowCents / 100}</Text>
+          <Text>Ingresos mes: {data.month?.totalIncomeCents / 100}</Text>
+          <Text>Gastos mes: {data.month?.totalExpenseCents / 100}</Text>
         </>
-      }
+      )}
       <Button title="Nuevo gasto" onPress={()=>navigation.navigate("NewTx")} />
     </View>
   );

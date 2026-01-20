@@ -69,14 +69,34 @@ export async function getBudgetSummaryForDate(userId: string, dateISO: string, u
       savingGoalCents = 0;
     }
 
-    // Obtener todas las transacciones del usuario en el mes y filtrar en memoria
-    // Esto evita la necesidad de índices compuestos
-    const allTransactionsSnapshot = await db.collection("transactions")
-      .where("userId", "==", userId)
-      .get();
+    // Obtener transacciones del mes con rango (más rápido que traer todo)
+    const monthStartDate = monthRange.start;
+    const monthEndDate = monthRange.end;
 
-    const monthStart = monthRange.start.getTime();
-    const monthEnd = monthRange.end.getTime();
+    const loadMonthTransactions = async () => {
+      try {
+        return await db.collection("transactions")
+          .where("userId", "==", userId)
+          .where("occurredAt", ">=", Timestamp.fromDate(monthStartDate))
+          .where("occurredAt", "<=", Timestamp.fromDate(monthEndDate))
+          .orderBy("occurredAt", "asc")
+          .get();
+      } catch (error: any) {
+        // Fallback si falta índice compuesto
+        const message = String(error?.message || "");
+        if (message.includes("index") || message.includes("INDEX")) {
+          return await db.collection("transactions")
+            .where("userId", "==", userId)
+            .get();
+        }
+        throw error;
+      }
+    };
+
+    const allTransactionsSnapshot = await loadMonthTransactions();
+
+    const monthStart = monthStartDate.getTime();
+    const monthEnd = monthEndDate.getTime();
     const dayStart = dayRange.start.getTime();
     const dayEnd = dayRange.end.getTime();
 

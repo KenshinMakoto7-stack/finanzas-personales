@@ -27,6 +27,7 @@ import exchangeRoutes from "../routes/exchange.routes.js";
 import plannedEventsRoutes from "../routes/planned-events.routes.js";
 import aiAnalysisRoutes from "../routes/ai-analysis.routes.js";
 import debtsRoutes from "../routes/debts.routes.js";
+import dashboardRoutes from "../routes/dashboard.routes.js";
 import { openApiDoc } from "../swagger/openapi.js";
 
 // Inicializar monitoreo (Sentry)
@@ -129,6 +130,7 @@ app.get("/", (_req, res) => res.json({
     search: "/search",
     notifications: "/notifications",
     exchange: "/exchange",
+    dashboard: "/dashboard",
     debts: "/debts",
     plannedEvents: "/planned-events",
     aiAnalysis: "/ai-analysis"
@@ -173,6 +175,7 @@ app.use("/patterns", patternsRoutes);
 app.use("/search", searchRoutes);
 app.use("/notifications", notificationsRoutes);
 app.use("/exchange", exchangeRoutes);
+app.use("/dashboard", dashboardRoutes);
 app.use("/debts", debtsRoutes);
 app.use("/planned-events", plannedEventsRoutes);
 app.use("/ai-analysis", aiAnalysisRoutes);

@@ -7,7 +7,9 @@ const router = Router();
 router.use(requireAuth);
 
 router.post("/subscribe", notificationsController.registerSubscription);
+router.get("/vapid-public-key", notificationsController.getVapidPublicKeyEndpoint);
 router.get("/pending", notificationsController.getPendingNotifications);
+router.post("/push-pending", notificationsController.pushPendingNotifications);
 router.post("/read", notificationsController.markAsRead);
 router.delete("/:id", notificationsController.deleteNotification);
 router.delete("/", notificationsController.deleteAllNotifications);
