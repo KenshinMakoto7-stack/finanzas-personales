@@ -12,9 +12,28 @@ jobs:
       - name: Send pending notifications
         env:
           API_URL: https://finanzas-api-homa.onrender.com
-          PUSH_NOTIF_TOKEN: ${{ secrets.PUSH_NOTIF_TOKEN }}
+          PUSH_NOTIF_EMAIL: ${{ secrets.PUSH_NOTIF_EMAIL }}
+          PUSH_NOTIF_PASSWORD: ${{ secrets.PUSH_NOTIF_PASSWORD }}
         run: |
+          TOKEN=$(python - <<'PY'
+import json
+import os
+import urllib.request
+
+url = os.environ["API_URL"] + "/auth/login"
+payload = json.dumps({
+    "email": os.environ["PUSH_NOTIF_EMAIL"],
+    "password": os.environ["PUSH_NOTIF_PASSWORD"]
+}).encode("utf-8")
+
+req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+with urllib.request.urlopen(req) as resp:
+    data = json.load(resp)
+    print(data.get("token", ""))
+PY
+)
+
           curl -sS -X POST "$API_URL/notifications/push-pending" \
-            -H "Authorization: Bearer $PUSH_NOTIF_TOKEN" \
+            -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d "{}"
