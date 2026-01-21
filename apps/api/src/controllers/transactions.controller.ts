@@ -56,27 +56,90 @@ export async function listTransactions(req: AuthRequest, res: Response) {
       sortOrder = "desc"
     } = req.query as any;
 
-    // Obtener todas las transacciones del usuario y filtrar en memoria
-    // Esto evita la necesidad de índices compuestos en Firebase
-    const snapshot = await db.collection("transactions")
-      .where("userId", "==", req.user!.userId)
-      .get();
+    const userId = req.user!.userId;
+
+    const buildDateRange = () => {
+      let fromDateUTC: Date | undefined;
+      let toDateUTC: Date | undefined;
+
+      if (from) {
+        const fromStr = from as string;
+        const fromDateStr = fromStr.includes("T") ? fromStr : `${fromStr}T00:00:00.000Z`;
+        const fromDate = new Date(fromDateStr);
+        fromDateUTC = new Date(Date.UTC(
+          fromDate.getUTCFullYear(),
+          fromDate.getUTCMonth(),
+          fromDate.getUTCDate(),
+          0, 0, 0, 0
+        ));
+      }
+
+      if (to) {
+        const toStr = to as string;
+        const toDateStr = toStr.includes("T") ? toStr : `${toStr}T23:59:59.999Z`;
+        const toDate = new Date(toDateStr);
+        toDateUTC = new Date(Date.UTC(
+          toDate.getUTCFullYear(),
+          toDate.getUTCMonth(),
+          toDate.getUTCDate(),
+          23, 59, 59, 999
+        ));
+      }
+
+      return { fromDateUTC, toDateUTC };
+    };
+
+    const { fromDateUTC, toDateUTC } = buildDateRange();
+
+    const loadTransactionsFast = async () => {
+      if (!fromDateUTC && !toDateUTC) {
+        return null;
+      }
+
+      let query = db.collection("transactions").where("userId", "==", userId);
+      if (fromDateUTC) query = query.where("occurredAt", ">=", Timestamp.fromDate(fromDateUTC));
+      if (toDateUTC) query = query.where("occurredAt", "<=", Timestamp.fromDate(toDateUTC));
+
+      const isRecurringBool = isRecurring !== undefined ? isRecurring === "true" : undefined;
+      const primaryFilter = accountId
+        ? { field: "accountId", value: String(accountId) }
+        : categoryId
+        ? { field: "categoryId", value: String(categoryId) }
+        : type
+        ? { field: "type", value: type }
+        : isRecurringBool !== undefined
+        ? { field: "isRecurring", value: isRecurringBool }
+        : null;
+
+      if (primaryFilter) {
+        query = query.where(primaryFilter.field, "==", primaryFilter.value);
+      }
+
+      const order = sortOrder === "asc" ? "asc" : "desc";
+      const snapshot = await query.orderBy("occurredAt", order).get();
+      return snapshot;
+    };
+
+    let snapshot = null;
+    try {
+      snapshot = await loadTransactionsFast();
+    } catch (error: any) {
+      const message = String(error?.message || "");
+      if (!message.includes("index") && !message.includes("INDEX")) {
+        throw error;
+      }
+    }
+
+    if (!snapshot) {
+      snapshot = await db.collection("transactions")
+        .where("userId", "==", userId)
+        .get();
+    }
 
     let allTransactions = snapshot.docs.map(doc => docToObject(doc));
 
     // Filtros de fecha
-    if (from) {
-      // Si solo viene la fecha (YYYY-MM-DD), incluir todo el día desde 00:00:00
-      const fromStr = from as string;
-      const fromDateStr = fromStr.includes('T') ? fromStr : `${fromStr}T00:00:00.000Z`;
-      const fromDate = new Date(fromDateStr);
-      // Normalizar a UTC para comparación - inicio del día
-      const fromDateUTC = new Date(Date.UTC(
-        fromDate.getUTCFullYear(),
-        fromDate.getUTCMonth(),
-        fromDate.getUTCDate(),
-        0, 0, 0, 0
-      ));
+    if (fromDateUTC) {
       const fromTime = fromDateUTC.getTime();
       
       allTransactions = allTransactions.filter((tx: any) => {
@@ -85,18 +148,7 @@ export async function listTransactions(req: AuthRequest, res: Response) {
         return txDate.getTime() >= fromTime;
       });
     }
-    if (to) {
-      // Si solo viene la fecha (YYYY-MM-DD), incluir todo el día hasta 23:59:59.999
-      const toStr = to as string;
-      const toDateStr = toStr.includes('T') ? toStr : `${toStr}T23:59:59.999Z`;
-      const toDate = new Date(toDateStr);
-      // Normalizar a UTC para comparación (usar fin del día para el límite)
-      const toDateUTC = new Date(Date.UTC(
-        toDate.getUTCFullYear(),
-        toDate.getUTCMonth(),
-        toDate.getUTCDate(),
-        23, 59, 59, 999
-      ));
+    if (toDateUTC) {
       const toTime = toDateUTC.getTime();
       
       allTransactions = allTransactions.filter((tx: any) => {
@@ -181,8 +233,8 @@ export async function listTransactions(req: AuthRequest, res: Response) {
     }
 
     // Cargar relaciones (category, account, tags)
-    const categoryIds = [...new Set(transactions.map((t: any) => t.categoryId).filter(Boolean))];
-    const accountIds = [...new Set(transactions.map((t: any) => t.accountId).filter(Boolean))];
+    const categoryIds = [...new Set(transactions.map((t: any) => t.categoryId).filter(Boolean))] as string[];
+    const accountIds = [...new Set(transactions.map((t: any) => t.accountId).filter(Boolean))] as string[];
     const transactionIds = transactions.map((t: any) => t.id);
 
     // Cargar transactionTags (usar chunking para respetar límite de 10)
@@ -207,7 +259,7 @@ export async function listTransactions(req: AuthRequest, res: Response) {
     const accountsMap = new Map(accounts.map(acc => [acc.id, acc]));
     
     // Cargar tags
-    const tagIds = [...new Set(tagsSnapshotDocs.map(doc => doc.data().tagId))];
+    const tagIds = [...new Set(tagsSnapshotDocs.map(doc => doc.data().tagId))] as string[];
     const tags = await getDocumentsByIds("tags", tagIds);
     const tagsMap = new Map(tags.map(tag => [tag.id, tag]));
     
