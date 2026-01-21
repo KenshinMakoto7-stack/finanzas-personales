@@ -117,6 +117,9 @@ export async function dashboardSummary(req: AuthRequest, res: Response) {
     const categoryIds = Array.from(expensesByCategoryMap.keys()).filter(id => id !== "null") as string[];
     const categories = await getDocumentsByIds("categories", categoryIds);
     const categoriesMap = new Map(categories.map((c: any) => [c.id, c]));
+    const parentIds = [...new Set(categories.map((c: any) => c.parentId).filter(Boolean))] as string[];
+    const parents = parentIds.length > 0 ? await getDocumentsByIds("categories", parentIds) : [];
+    const parentsMap = new Map(parents.map((p: any) => [p.id, p]));
 
     const expensesByCategory = Array.from(expensesByCategoryMap.entries())
       .map(([categoryId, totals]) => ({
@@ -129,6 +132,36 @@ export async function dashboardSummary(req: AuthRequest, res: Response) {
       }))
       .sort((a, b) => b.amountCents - a.amountCents)
       .slice(0, 5);
+
+    const expensesByFamilyMap = new Map<string, { familyName: string; amountCents: number; count: number }>();
+    expensesByCategoryMap.forEach((totals, categoryId) => {
+      const category = categoryId === "null" ? null : categoriesMap.get(categoryId);
+      const parent = category?.parentId ? parentsMap.get(category.parentId) : null;
+      const familyId = parent?.id || categoryId || "null";
+      const familyName = parent?.name || category?.name || "Sin categoría";
+      const existing = expensesByFamilyMap.get(familyId) || { familyName, amountCents: 0, count: 0 };
+      expensesByFamilyMap.set(familyId, {
+        familyName,
+        amountCents: existing.amountCents + totals.amountCents,
+        count: existing.count + totals.count
+      });
+    });
+
+    const expensesByFamily = Array.from(expensesByFamilyMap.entries())
+      .map(([familyId, totals]) => ({
+        familyId: familyId === "null" ? null : familyId,
+        familyName: totals.familyName,
+        amountCents: totals.amountCents,
+        count: totals.count
+      }))
+      .sort((a, b) => b.amountCents - a.amountCents);
+
+    const debtExpensesCents = expensesByFamily
+      .filter((f) => f.familyName.toLowerCase().includes("deuda"))
+      .reduce((sum, f) => sum + f.amountCents, 0);
+    const debtSharePercent = totalExpenseCents > 0
+      ? Math.round((debtExpensesCents / totalExpenseCents) * 100)
+      : 0;
 
     const dayStart = dayRange.start.getTime();
     const dayEnd = dayRange.end.getTime();
@@ -216,7 +249,13 @@ export async function dashboardSummary(req: AuthRequest, res: Response) {
         totalExpenseCents,
         balanceCents: totalIncomeCents - totalExpenseCents,
         availableBalanceCents,
-        expensesByCategory
+        expensesByCategory,
+        expensesByFamily: expensesByFamily.slice(0, 5)
+      },
+      insights: {
+        debtExpensesCents,
+        debtSharePercent,
+        topFamily: expensesByFamily[0] || null
       },
       goal: {
         savingGoalCents,

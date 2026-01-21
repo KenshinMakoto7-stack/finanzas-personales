@@ -136,7 +136,45 @@ export async function expensesByCategory(req: AuthRequest, res: Response) {
       count: totals.count
     })).sort((a, b) => b.amountCents - a.amountCents);
 
-    const response = { period: { start, end, type: period }, data };
+    const familyTotals = new Map<string, { familyName: string; amountCents: number; count: number }>();
+    convertedExpenses.forEach((tx) => {
+      const category = tx.categoryId ? categoryMap[tx.categoryId] : null;
+      const parent = category?.parent ? category.parent : null;
+      const familyId = parent?.id || tx.categoryId || "null";
+      const familyName = parent?.name || category?.name || "Sin categoría";
+      const existing = familyTotals.get(familyId) || { familyName, amountCents: 0, count: 0 };
+      familyTotals.set(familyId, {
+        familyName,
+        amountCents: existing.amountCents + tx.amountCents,
+        count: existing.count + 1
+      });
+    });
+
+    const byFamily = Array.from(familyTotals.entries())
+      .map(([familyId, totals]) => ({
+        familyId: familyId === "null" ? null : familyId,
+        familyName: totals.familyName,
+        amountCents: totals.amountCents,
+        count: totals.count
+      }))
+      .sort((a, b) => b.amountCents - a.amountCents);
+
+    const totalExpensesCents = data.reduce((sum, item) => sum + item.amountCents, 0);
+    const uncategorizedCents = data.find((item) => item.categoryId === null)?.amountCents || 0;
+
+    const response = {
+      period: { start, end, type: period },
+      data,
+      byFamily,
+      summary: {
+        totalExpensesCents,
+        categoryCount: data.length,
+        familyCount: byFamily.length,
+        topCategory: data[0] || null,
+        topFamily: byFamily[0] || null,
+        uncategorizedCents
+      }
+    };
     writeCachePayload(cacheKey, response);
     res.json(response);
   } catch (error: any) {
