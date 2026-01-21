@@ -4,6 +4,7 @@ import { AccountSchema } from "@pf/shared";
 import { AuthRequest } from "../server/middleware/auth.js";
 import { objectToFirestore, docToObject } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { touchUserData } from "../lib/cache.js";
 
 export async function listAccounts(req: AuthRequest, res: Response) {
   try {
@@ -39,6 +40,7 @@ export async function createAccount(req: AuthRequest, res: Response) {
 
     const docRef = await db.collection("accounts").add(objectToFirestore(accountData));
     const account = { id: docRef.id, ...accountData };
+    void touchUserData(req.user!.userId);
 
     res.status(201).json({ account: docToObject(await docRef.get()) });
   } catch (error: any) {
@@ -67,6 +69,7 @@ export async function updateAccount(req: AuthRequest, res: Response) {
     if (name !== undefined) updateData.name = name;
 
     await db.collection("accounts").doc(accountId).update(objectToFirestore(updateData));
+    void touchUserData(req.user!.userId);
 
     const updatedDoc = await db.collection("accounts").doc(accountId).get();
     res.json({ account: docToObject(updatedDoc) });
@@ -103,6 +106,7 @@ export async function deleteAccount(req: AuthRequest, res: Response) {
     }
 
     await db.collection("accounts").doc(accountId).delete();
+    void touchUserData(req.user!.userId);
     res.status(204).send();
   } catch (error: any) {
     console.error("Delete account error:", error);

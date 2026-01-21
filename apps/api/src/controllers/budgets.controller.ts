@@ -4,6 +4,7 @@ import { AuthRequest } from "../server/middleware/auth.js";
 import { z } from "zod";
 import { objectToFirestore, docToObject } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { touchUserData } from "../lib/cache.js";
 
 const CategoryBudgetSchema = z.object({
   categoryId: z.string(),
@@ -314,6 +315,7 @@ export async function createCategoryBudget(req: AuthRequest, res: Response) {
       budget = docToObject(await docRef.get());
     }
 
+    void touchUserData(userId);
     // Cargar categoría
     const category = docToObject(categoryDoc);
 
@@ -357,6 +359,7 @@ export async function updateCategoryBudget(req: AuthRequest, res: Response) {
     }
 
     await db.collection("categoryBudgets").doc(budgetId).update(objectToFirestore(updateData));
+    void touchUserData(userId);
 
     const updatedBudget = docToObject(await db.collection("categoryBudgets").doc(budgetId).get());
     
@@ -388,6 +391,7 @@ export async function deleteCategoryBudget(req: AuthRequest, res: Response) {
     }
 
     await db.collection("categoryBudgets").doc(budgetId).delete();
+    void touchUserData(req.user!.userId);
     res.status(204).send();
   } catch (error: any) {
     console.error("Delete category budget error:", error);

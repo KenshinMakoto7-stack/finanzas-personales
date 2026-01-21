@@ -4,6 +4,7 @@ import { CategorySchema } from "@pf/shared";
 import { AuthRequest } from "../server/middleware/auth.js";
 import { objectToFirestore, docToObject } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { touchUserData } from "../lib/cache.js";
 
 export async function listCategories(req: AuthRequest, res: Response) {
   try {
@@ -88,6 +89,7 @@ export async function createCategory(req: AuthRequest, res: Response) {
     };
 
     const docRef = await db.collection("categories").add(objectToFirestore(categoryData));
+    void touchUserData(req.user!.userId);
     res.status(201).json({ category: docToObject(await docRef.get()) });
   } catch (error: any) {
     console.error("Create category error:", error);
@@ -155,6 +157,7 @@ export async function updateCategory(req: AuthRequest, res: Response) {
     if (color !== undefined) updateData.color = color || null;
 
     await db.collection("categories").doc(categoryId).update(objectToFirestore(updateData));
+    void touchUserData(req.user!.userId);
 
     const updatedDoc = await db.collection("categories").doc(categoryId).get();
     res.json({ category: docToObject(updatedDoc) });
@@ -200,6 +203,7 @@ export async function deleteCategory(req: AuthRequest, res: Response) {
     }
 
     await db.collection("categories").doc(categoryId).delete();
+    void touchUserData(req.user!.userId);
     res.status(204).send();
   } catch (error: any) {
     console.error("Delete category error:", error);

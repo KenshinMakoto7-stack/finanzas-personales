@@ -7,6 +7,7 @@ import { objectToFirestore, fromFirestoreTimestamp } from "../lib/firestore-help
 import { Timestamp } from "firebase-admin/firestore";
 import { logger } from "../lib/monitoring.js";
 import { isValidTimezone, COMMON_TIMEZONES } from "../lib/time.js";
+import { touchUserData } from "../lib/cache.js";
 
 /**
  * Registro de nuevo usuario
@@ -269,6 +270,7 @@ export async function updatePrefs(req: AuthRequest, res: Response) {
     }
 
     await db.collection("users").doc(req.user!.userId).update(objectToFirestore(updateData));
+    void touchUserData(req.user!.userId);
 
     // Actualizar displayName en Auth si se cambió el nombre
     if (name !== undefined) {

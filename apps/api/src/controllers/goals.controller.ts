@@ -4,6 +4,7 @@ import { monthAnchorUTC } from "../lib/time.js";
 import { AuthRequest } from "../server/middleware/auth.js";
 import { objectToFirestore, docToObject } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { touchUserData } from "../lib/cache.js";
 
 export async function upsertGoal(req: AuthRequest, res: Response) {
   try {
@@ -39,6 +40,7 @@ export async function upsertGoal(req: AuthRequest, res: Response) {
       goal = docToObject(await docRef.get());
     }
 
+    void touchUserData(req.user!.userId);
     res.json({ goal });
   } catch (error: any) {
     console.error("Upsert goal error:", error);

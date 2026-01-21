@@ -5,6 +5,9 @@ import { monthRangeUTC, monthAnchorUTC } from "../lib/time.js";
 import { getExchangeRatesMap, convertAmountWithRate } from "../services/exchange.service.js";
 import { docToObject, getDocumentsByIds } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { getUserDataUpdatedAt, readCachePayload, writeCachePayload } from "../lib/cache.js";
+
+const STATS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 async function fetchTransactionsInRange(
   userId: string,
@@ -39,9 +42,18 @@ async function fetchTransactionsInRange(
 export async function expensesByCategory(req: AuthRequest, res: Response) {
   try {
     const { year, month, period = "month" } = req.query as any;
+    const userId = req.user!.userId;
+    const quarter = req.query.quarter || "";
+    const semester = req.query.semester || "";
+    const cacheKey = `stats_expenses_${userId}_${period}_${year || "current"}_${month || "current"}_${quarter}_${semester}`;
+    const updatedAt = await getUserDataUpdatedAt(userId);
+    const cached = await readCachePayload(cacheKey, STATS_CACHE_TTL_MS, updatedAt);
+    if (cached) {
+      return res.json(cached);
+    }
     
     // Obtener usuario
-    const userDoc = await db.collection("users").doc(req.user!.userId).get();
+    const userDoc = await db.collection("users").doc(userId).get();
     if (!userDoc.exists) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
@@ -124,7 +136,9 @@ export async function expensesByCategory(req: AuthRequest, res: Response) {
       count: totals.count
     })).sort((a, b) => b.amountCents - a.amountCents);
 
-    res.json({ period: { start, end, type: period }, data });
+    const response = { period: { start, end, type: period }, data };
+    writeCachePayload(cacheKey, response);
+    res.json(response);
   } catch (error: any) {
     console.error("Expenses by category error:", error);
     res.status(500).json({ error: error.message || "Error al obtener gastos por categoría" });
@@ -134,7 +148,14 @@ export async function expensesByCategory(req: AuthRequest, res: Response) {
 export async function savingsStatistics(req: AuthRequest, res: Response) {
   try {
     const { year } = req.query as any;
+    const userId = req.user!.userId;
     const currentYear = year ? Number(year) : new Date().getFullYear();
+    const cacheKey = `stats_savings_${userId}_${currentYear}`;
+    const updatedAt = await getUserDataUpdatedAt(userId);
+    const cached = await readCachePayload(cacheKey, STATS_CACHE_TTL_MS, updatedAt);
+    if (cached) {
+      return res.json(cached);
+    }
 
     // Obtener metas del año
     const yearStart = monthAnchorUTC(currentYear, 1);
@@ -142,7 +163,7 @@ export async function savingsStatistics(req: AuthRequest, res: Response) {
     
     // Obtener metas sin orderBy para evitar índice compuesto
     const goalsSnapshot = await db.collection("monthlyGoals")
-      .where("userId", "==", req.user!.userId)
+      .where("userId", "==", userId)
       .get();
 
     // Filtrar y ordenar en memoria
@@ -159,7 +180,7 @@ export async function savingsStatistics(req: AuthRequest, res: Response) {
       });
 
     // Obtener usuario
-    const userDoc = await db.collection("users").doc(req.user!.userId).get();
+    const userDoc = await db.collection("users").doc(userId).get();
     if (!userDoc.exists) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
@@ -172,10 +193,10 @@ export async function savingsStatistics(req: AuthRequest, res: Response) {
     const yearEndTime = yearEnd.getTime();
 
     const [allIncomeTransactionsRaw, allExpenseTransactionsRaw, savingsAccountsSnapshot] = await Promise.all([
-      fetchTransactionsInRange(req.user!.userId, yearStart, yearEnd, "INCOME"),
-      fetchTransactionsInRange(req.user!.userId, yearStart, yearEnd, "EXPENSE"),
+      fetchTransactionsInRange(userId, yearStart, yearEnd, "INCOME"),
+      fetchTransactionsInRange(userId, yearStart, yearEnd, "EXPENSE"),
       db.collection("accounts")
-        .where("userId", "==", req.user!.userId)
+        .where("userId", "==", userId)
         .where("type", "==", "SAVINGS")
         .get()
     ]);
@@ -277,7 +298,7 @@ export async function savingsStatistics(req: AuthRequest, res: Response) {
     const totalSavings = monthlyData.reduce((sum, m) => sum + m.actualSavings, 0);
     const totalGoal = goals.reduce((sum, g: any) => sum + (g.savingGoalCents || 0), 0);
 
-    res.json({
+    const response = {
       year: currentYear,
       monthly: monthlyData,
       summary: {
@@ -287,7 +308,9 @@ export async function savingsStatistics(req: AuthRequest, res: Response) {
         totalGoal,
         averageSavingsRate: totalIncome > 0 ? Math.round((totalSavings / totalIncome) * 10000) / 100 : 0
       }
-    });
+    };
+    writeCachePayload(cacheKey, response);
+    res.json(response);
   } catch (error: any) {
     console.error("Savings statistics error:", error);
     res.status(500).json({ error: error.message || "Error al obtener estadísticas de ahorro" });
@@ -297,10 +320,17 @@ export async function savingsStatistics(req: AuthRequest, res: Response) {
 export async function incomeStatistics(req: AuthRequest, res: Response) {
   try {
     const { year } = req.query as any;
+    const userId = req.user!.userId;
     const currentYear = year ? Number(year) : new Date().getFullYear();
+    const cacheKey = `stats_income_${userId}_${currentYear}`;
+    const updatedAt = await getUserDataUpdatedAt(userId);
+    const cached = await readCachePayload(cacheKey, STATS_CACHE_TTL_MS, updatedAt);
+    if (cached) {
+      return res.json(cached);
+    }
 
     // Obtener usuario
-    const userDoc = await db.collection("users").doc(req.user!.userId).get();
+    const userDoc = await db.collection("users").doc(userId).get();
     if (!userDoc.exists) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
@@ -315,7 +345,7 @@ export async function incomeStatistics(req: AuthRequest, res: Response) {
     const yearStartTime = yearStart.getTime();
     const yearEndTime = yearEnd.getTime();
 
-    const allIncomeTransactions = (await fetchTransactionsInRange(req.user!.userId, yearStart, yearEnd, "INCOME"))
+    const allIncomeTransactions = (await fetchTransactionsInRange(userId, yearStart, yearEnd, "INCOME"))
       .filter((tx: any) => {
         const txDate = tx.occurredAt?.toDate?.() || new Date(tx.occurredAt);
         const txTime = txDate.getTime();
@@ -391,7 +421,9 @@ export async function incomeStatistics(req: AuthRequest, res: Response) {
       };
     });
 
-    res.json({ year: currentYear, monthly: monthlyData });
+    const response = { year: currentYear, monthly: monthlyData };
+    writeCachePayload(cacheKey, response);
+    res.json(response);
   } catch (error: any) {
     console.error("Income statistics error:", error);
     res.status(500).json({ error: error.message || "Error al obtener estadísticas de ingresos" });
@@ -400,8 +432,16 @@ export async function incomeStatistics(req: AuthRequest, res: Response) {
 
 export async function fixedCosts(req: AuthRequest, res: Response) {
   try {
+    const userId = req.user!.userId;
+    const cacheKey = `stats_fixed_costs_${userId}`;
+    const updatedAt = await getUserDataUpdatedAt(userId);
+    const cached = await readCachePayload(cacheKey, STATS_CACHE_TTL_MS, updatedAt);
+    if (cached) {
+      return res.json(cached);
+    }
+
     // Obtener usuario
-    const userDoc = await db.collection("users").doc(req.user!.userId).get();
+    const userDoc = await db.collection("users").doc(userId).get();
     if (!userDoc.exists) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
@@ -414,7 +454,7 @@ export async function fixedCosts(req: AuthRequest, res: Response) {
 
     // Transacciones recurrentes - sin orderBy para evitar índice compuesto
     const recurringSnapshot = await db.collection("transactions")
-      .where("userId", "==", req.user!.userId)
+      .where("userId", "==", userId)
       .where("isRecurring", "==", true)
       .get();
 
@@ -443,7 +483,7 @@ export async function fixedCosts(req: AuthRequest, res: Response) {
 
     // Identificar gastos que se repiten (mismo monto, misma categoría, cada mes)
     const sixMonthsAgoTime = sixMonthsAgo.getTime();
-    const allExpenses = (await fetchTransactionsInRange(req.user!.userId, sixMonthsAgo, today, "EXPENSE"))
+    const allExpenses = (await fetchTransactionsInRange(userId, sixMonthsAgo, today, "EXPENSE"))
       .filter((tx: any) => {
         const txDate = tx.occurredAt?.toDate?.() || new Date(tx.occurredAt);
         const txTime = txDate.getTime();
@@ -474,7 +514,7 @@ export async function fixedCosts(req: AuthRequest, res: Response) {
       })
       .sort((a, b) => b.amountCents - a.amountCents);
 
-    res.json({
+    const response = {
       recurring: recurringWithRelations.map((r: any) => ({
         id: r.id,
         description: r.description,
@@ -486,7 +526,9 @@ export async function fixedCosts(req: AuthRequest, res: Response) {
         remainingOccurrences: r.remainingOccurrences
       })),
       potentialFixed
-    });
+    };
+    writeCachePayload(cacheKey, response);
+    res.json(response);
   } catch (error: any) {
     console.error("Fixed costs error:", error);
     res.status(500).json({ error: error.message || "Error al obtener costos fijos" });
@@ -495,8 +537,16 @@ export async function fixedCosts(req: AuthRequest, res: Response) {
 
 export async function aiInsights(req: AuthRequest, res: Response) {
   try {
+    const userId = req.user!.userId;
+    const cacheKey = `stats_ai_insights_${userId}`;
+    const updatedAt = await getUserDataUpdatedAt(userId);
+    const cached = await readCachePayload(cacheKey, STATS_CACHE_TTL_MS, updatedAt);
+    if (cached) {
+      return res.json(cached);
+    }
+
     // Obtener usuario
-    const userDoc = await db.collection("users").doc(req.user!.userId).get();
+    const userDoc = await db.collection("users").doc(userId).get();
     if (!userDoc.exists) {
       return res.status(404).json({ error: "Usuario no encontrado" });
     }
@@ -508,7 +558,7 @@ export async function aiInsights(req: AuthRequest, res: Response) {
     threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
     const threeMonthsAgoTime = threeMonthsAgo.getTime();
 
-    const expenses = (await fetchTransactionsInRange(req.user!.userId, threeMonthsAgo, today, "EXPENSE"))
+    const expenses = (await fetchTransactionsInRange(userId, threeMonthsAgo, today, "EXPENSE"))
       .filter((tx: any) => {
         const txDate = tx.occurredAt?.toDate?.() || new Date(tx.occurredAt);
         return tx.type === "EXPENSE" && txDate.getTime() >= threeMonthsAgoTime;
@@ -525,7 +575,7 @@ export async function aiInsights(req: AuthRequest, res: Response) {
       category: e.categoryId ? categoriesMap.get(e.categoryId) : null
     }));
 
-    const incomes = (await fetchTransactionsInRange(req.user!.userId, threeMonthsAgo, today, "INCOME"))
+    const incomes = (await fetchTransactionsInRange(userId, threeMonthsAgo, today, "INCOME"))
       .filter((tx: any) => {
         const txDate = tx.occurredAt?.toDate?.() || new Date(tx.occurredAt);
         return tx.type === "INCOME" && txDate.getTime() >= threeMonthsAgoTime;
@@ -589,7 +639,9 @@ export async function aiInsights(req: AuthRequest, res: Response) {
       });
     }
 
-    res.json({ insights, summary: { avgMonthlyExpenses, avgMonthlyIncome, totalExpenses, totalIncome } });
+    const response = { insights, summary: { avgMonthlyExpenses, avgMonthlyIncome, totalExpenses, totalIncome } };
+    writeCachePayload(cacheKey, response);
+    res.json(response);
   } catch (error: any) {
     console.error("AI insights error:", error);
     res.status(500).json({ error: error.message || "Error al obtener insights" });

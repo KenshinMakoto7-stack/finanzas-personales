@@ -4,6 +4,7 @@ import { TransactionSchema } from "@pf/shared";
 import { AuthRequest } from "../server/middleware/auth.js";
 import { objectToFirestore, docToObject, textSearch, getDocumentsByIds, chunkArray } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { touchUserData } from "../lib/cache.js";
 
 // Función auxiliar para obtener o crear la categoría "Deudas"
 async function getOrCreateDebtsCategory(userId: string) {
@@ -626,6 +627,7 @@ export async function createTransaction(req: AuthRequest, res: Response) {
     }
     
     await batch.commit();
+    void touchUserData(req.user!.userId);
     
     const tx = docToObject(await transactionRef.get());
     
@@ -729,6 +731,7 @@ export async function updateTransaction(req: AuthRequest, res: Response) {
     if ((req.body as any).remainingOccurrences !== undefined) updateData.remainingOccurrences = (req.body as any).remainingOccurrences;
 
     await db.collection("transactions").doc(transactionId).update(objectToFirestore(updateData));
+    void touchUserData(req.user!.userId);
 
     const updatedDoc = await db.collection("transactions").doc(transactionId).get();
     res.json({ transaction: docToObject(updatedDoc) });
@@ -803,6 +806,7 @@ export async function deleteTransaction(req: AuthRequest, res: Response) {
     tagsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
     batch.delete(db.collection("transactions").doc(transactionId));
     await batch.commit();
+    void touchUserData(req.user!.userId);
 
     res.status(204).send();
   } catch (error: any) {

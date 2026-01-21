@@ -6,6 +6,7 @@ import { monthRangeUTC, dayRangeUTC, cycleRangeUTC } from "../lib/time.js";
 import { docToObject, getDocumentsByIds } from "../lib/firestore-helpers.js";
 import { getBudgetSummaryForDate } from "../services/budget.service.js";
 import { getExchangeRatesMap, convertAmountWithRate } from "../services/exchange.service.js";
+import { getUserDataUpdatedAt, readCachePayload, writeCachePayload } from "../lib/cache.js";
 
 type CacheEntry = { timestamp: number; data: any };
 const dashboardCache = new Map<string, CacheEntry>();
@@ -37,24 +38,17 @@ export async function dashboardSummary(req: AuthRequest, res: Response) {
     const cacheKey = `${userId}:${dateParam}`;
     const now = Date.now();
 
+    const updatedAt = await getUserDataUpdatedAt(userId);
+
     const cached = dashboardCache.get(cacheKey);
-    if (cached && (now - cached.timestamp) < CACHE_TTL_MS) {
+    if (cached && (now - cached.timestamp) < CACHE_TTL_MS && cached.timestamp >= updatedAt) {
       return res.json(cached.data);
     }
 
-    // Cache distribuido en Firestore
-    try {
-      const cacheDoc = await db.collection("_cache").doc(`dashboard_summary_${cacheKey}`).get();
-      if (cacheDoc.exists) {
-        const data = cacheDoc.data();
-        const cacheTimestamp = data?.timestamp?.toMillis?.() || 0;
-        if ((now - cacheTimestamp) < CACHE_TTL_MS && data?.payload) {
-          dashboardCache.set(cacheKey, { timestamp: now, data: data.payload });
-          return res.json(data.payload);
-        }
-      }
-    } catch {
-      // Si falla el cache distribuido, continuar sin bloquear
+    const cachedPayload = await readCachePayload(`dashboard_summary_${cacheKey}`, CACHE_TTL_MS, updatedAt);
+    if (cachedPayload) {
+      dashboardCache.set(cacheKey, { timestamp: now, data: cachedPayload });
+      return res.json(cachedPayload);
     }
 
     const userDoc = await db.collection("users").doc(userId).get();
@@ -245,10 +239,7 @@ export async function dashboardSummary(req: AuthRequest, res: Response) {
     };
 
     dashboardCache.set(cacheKey, { timestamp: now, data: response });
-    db.collection("_cache").doc(`dashboard_summary_${cacheKey}`).set({
-      payload: response,
-      timestamp: Timestamp.now()
-    }).catch(() => null);
+    writeCachePayload(`dashboard_summary_${cacheKey}`, response);
     res.json(response);
   } catch (error: any) {
     console.error("Dashboard summary error:", error);
