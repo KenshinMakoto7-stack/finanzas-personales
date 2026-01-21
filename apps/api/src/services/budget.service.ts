@@ -149,8 +149,9 @@ export async function getBudgetSummaryForDate(
       savingGoalCents
     });
 
+    const cycleDay = "cycleDay" in cycleRange ? cycleRange.cycleDay : (budgetCycleDay ?? null);
     return {
-      params: { date: dateISO, timeZone: userTimeZone, budgetCycleDay: cycleRange.cycleDay || null },
+      params: { date: dateISO, timeZone: userTimeZone, budgetCycleDay: cycleDay },
       data: calc
     };
   } catch (error: any) {

@@ -17,8 +17,10 @@ export async function alertsPreview(req: AuthRequest, res: Response) {
     
     const userData = userDoc.data()!;
     const tz = userData.timeZone || "UTC";
+    const baseCurrency = userData.currencyCode || "UYU";
+    const budgetCycleDay = userData.budgetCycleDay ?? null;
     
-    const result = await getBudgetSummaryForDate(req.user!.userId, date, tz);
+    const result = await getBudgetSummaryForDate(req.user!.userId, date, tz, baseCurrency, budgetCycleDay);
     const alerts: Array<{ level: "info" | "warn" | "danger"; message: string }> = [];
 
     if (result.data.safety.overspend) {
