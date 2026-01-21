@@ -352,9 +352,27 @@ export async function verifyResetToken(req: Request, res: Response) {
       return res.status(400).json({ error: "Token es requerido" });
     }
 
-    // Firebase Auth verifica el token automáticamente cuando el usuario hace clic en el link
-    // Este endpoint puede ser opcional, pero lo mantenemos para compatibilidad
-    res.json({ valid: true });
+    const API_KEY = process.env.FIREBASE_API_KEY;
+    if (!API_KEY) {
+      return res.status(500).json({ error: "FIREBASE_API_KEY no configurada" });
+    }
+
+    // Verificar oobCode en Firebase
+    const verifyResponse = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oobCode: token })
+      }
+    );
+
+    const verifyData = await verifyResponse.json();
+    if (!verifyResponse.ok || verifyData.error) {
+      return res.status(400).json({ error: "Token inválido o expirado" });
+    }
+
+    res.json({ valid: true, email: verifyData.email || null });
   } catch (error: any) {
     res.status(400).json({ error: "Token inválido o expirado" });
   }
@@ -371,10 +389,25 @@ export async function resetPassword(req: Request, res: Response) {
       return res.status(400).json({ error: "Token y nueva contraseña son requeridos" });
     }
 
-    // Firebase Auth maneja el reset de contraseña a través del link
-    // Este endpoint puede ser usado si el cliente quiere resetear programáticamente
-    // Pero normalmente Firebase maneja esto a través del link de email
-    
+    const API_KEY = process.env.FIREBASE_API_KEY;
+    if (!API_KEY) {
+      return res.status(500).json({ error: "FIREBASE_API_KEY no configurada" });
+    }
+
+    const resetResponse = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oobCode: token, newPassword })
+      }
+    );
+
+    const resetData = await resetResponse.json();
+    if (!resetResponse.ok || resetData.error) {
+      return res.status(400).json({ error: "Token inválido o expirado" });
+    }
+
     res.json({ message: "Contraseña actualizada exitosamente" });
   } catch (error: any) {
     logger.error("Reset password error", error);
