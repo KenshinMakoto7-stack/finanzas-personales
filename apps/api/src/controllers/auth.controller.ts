@@ -51,6 +51,7 @@ export async function register(req: Request, res: Response) {
       currencyCode: currencyCode || "USD",
       locale: locale || "en-US",
       timeZone: validatedTimeZone,
+      budgetCycleDay: null,
       createdAt: Timestamp.now()
     };
 
@@ -88,7 +89,8 @@ export async function register(req: Request, res: Response) {
         name,
         currencyCode: userData.currencyCode,
         locale: userData.locale,
-        timeZone: userData.timeZone
+        timeZone: userData.timeZone,
+        budgetCycleDay: userData.budgetCycleDay
       }
     });
   } catch (error: any) {
@@ -154,7 +156,8 @@ export async function login(req: Request, res: Response) {
             name: userData.name,
             currencyCode: userData.currencyCode || "USD",
             locale: userData.locale || "en-US",
-            timeZone: userData.timeZone || "UTC"
+            timeZone: userData.timeZone || "UTC",
+            budgetCycleDay: userData.budgetCycleDay ?? null
           }
         });
         return;
@@ -196,7 +199,8 @@ export async function login(req: Request, res: Response) {
           name: userData.name,
           currencyCode: userData.currencyCode || "USD",
           locale: userData.locale || "en-US",
-          timeZone: userData.timeZone || "UTC"
+          timeZone: userData.timeZone || "UTC",
+          budgetCycleDay: userData.budgetCycleDay ?? null
         }
       });
     }
@@ -228,7 +232,8 @@ export async function me(req: AuthRequest, res: Response) {
         locale: userData.locale || "en-US",
         timeZone: userData.timeZone || "UTC",
         defaultAccountId: userData.defaultAccountId || null,
-        defaultCategoryId: userData.defaultCategoryId || null
+        defaultCategoryId: userData.defaultCategoryId || null,
+        budgetCycleDay: userData.budgetCycleDay ?? null
       }
     });
   } catch (error: any) {
@@ -242,7 +247,7 @@ export async function me(req: AuthRequest, res: Response) {
  */
 export async function updatePrefs(req: AuthRequest, res: Response) {
   try {
-    const { currencyCode, locale, timeZone, name, defaultAccountId, defaultCategoryId } = req.body || {};
+    const { currencyCode, locale, timeZone, name, defaultAccountId, defaultCategoryId, budgetCycleDay } = req.body || {};
     
     const updateData: any = {};
     if (currencyCode !== undefined) updateData.currencyCode = currencyCode;
@@ -251,6 +256,17 @@ export async function updatePrefs(req: AuthRequest, res: Response) {
     if (name !== undefined) updateData.name = name;
     if (defaultAccountId !== undefined) updateData.defaultAccountId = defaultAccountId;
     if (defaultCategoryId !== undefined) updateData.defaultCategoryId = defaultCategoryId;
+    if (budgetCycleDay !== undefined) {
+      if (budgetCycleDay === null || budgetCycleDay === "") {
+        updateData.budgetCycleDay = null;
+      } else {
+        const parsed = Number(budgetCycleDay);
+        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 28) {
+          return res.status(400).json({ error: "El día de cobro debe estar entre 1 y 28" });
+        }
+        updateData.budgetCycleDay = parsed;
+      }
+    }
 
     await db.collection("users").doc(req.user!.userId).update(objectToFirestore(updateData));
 
@@ -272,7 +288,8 @@ export async function updatePrefs(req: AuthRequest, res: Response) {
         locale: userData.locale || "en-US",
         timeZone: userData.timeZone || "UTC",
         defaultAccountId: userData.defaultAccountId || null,
-        defaultCategoryId: userData.defaultCategoryId || null
+        defaultCategoryId: userData.defaultCategoryId || null,
+        budgetCycleDay: userData.budgetCycleDay ?? null
       }
     });
   } catch (error: any) {

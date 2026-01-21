@@ -18,6 +18,36 @@ export function monthRangeUTC(dateISO: string, timeZone: string) {
   return { start: start.toJSDate(), end: end.toJSDate(), year: d.year, month: d.month, daysInMonth: d.daysInMonth };
 }
 
+/**
+ * Retorna el rango de un ciclo de presupuesto basado en un día de cobro.
+ * Si cycleDay no es válido, usa el mes calendario.
+ */
+export function cycleRangeUTC(dateISO: string, timeZone: string, cycleDay?: number | null) {
+  if (!cycleDay || !Number.isFinite(cycleDay)) {
+    return monthRangeUTC(dateISO, timeZone);
+  }
+
+  const day = Math.max(1, Math.min(28, Math.floor(cycleDay)));
+  const tz = isValidTimezone(timeZone) ? timeZone : "UTC";
+  const d = DateTime.fromISO(dateISO, { zone: tz });
+
+  let start = d.set({ day }).startOf("day");
+  if (d.day < day) {
+    start = start.minus({ months: 1 }).set({ day }).startOf("day");
+  }
+  const end = start.plus({ months: 1 }).minus({ days: 1 }).endOf("day");
+
+  const daysInCycle = Math.floor(end.diff(start, "days").days) + 1;
+  return {
+    start: start.toUTC().toJSDate(),
+    end: end.toUTC().toJSDate(),
+    year: start.year,
+    month: start.month,
+    daysInMonth: daysInCycle,
+    cycleDay: day
+  };
+}
+
 /** Convierte año/mes a primer día UTC (convención para MonthlyGoal) */
 export function monthAnchorUTC(year: number, month: number) {
   return DateTime.utc(year, month, 1, 0, 0, 0).toJSDate();

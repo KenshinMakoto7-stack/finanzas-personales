@@ -1,7 +1,8 @@
 import { db } from "../lib/firebase.js";
-import { monthRangeUTC, dayRangeUTC } from "../lib/time.js";
+import { monthRangeUTC, dayRangeUTC, cycleRangeUTC } from "../lib/time.js";
 import { docToObject } from "../lib/firestore-helpers.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { getExchangeRatesMap, convertAmountWithRate } from "./exchange.service.js";
 
 /** Función pura: cálculo del promedio y rollover (todos en centavos) */
 export function computeDailyBudgetWithRollover(params: {
@@ -48,16 +49,21 @@ export function computeDailyBudgetWithRollover(params: {
 }
 
 /** Servicio: calcula el resumen para el usuario en una fecha (respetando su TZ) */
-export async function getBudgetSummaryForDate(userId: string, dateISO: string, userTimeZone: string, year?: number, month?: number) {
+export async function getBudgetSummaryForDate(
+  userId: string,
+  dateISO: string,
+  userTimeZone: string,
+  baseCurrency: string,
+  budgetCycleDay?: number | null
+) {
   try {
-    // Rango del mes y del día en UTC (a partir de dateISO interpretado en TZ)
-    const monthRange = monthRangeUTC(dateISO, userTimeZone);
+    const cycleRange = cycleRangeUTC(dateISO, userTimeZone, budgetCycleDay);
     const dayRange = dayRangeUTC(dateISO, userTimeZone);
 
     // Meta del mes (si no existe, 0)
     let savingGoalCents = 0;
     try {
-      const monthDate = new Date(Date.UTC(monthRange.year, monthRange.month - 1, 1));
+      const monthDate = new Date(Date.UTC(cycleRange.year, cycleRange.month - 1, 1));
       const goalsSnapshot = await db.collection("monthlyGoals")
         .where("userId", "==", userId)
         .where("month", "==", Timestamp.fromDate(monthDate))
@@ -70,8 +76,8 @@ export async function getBudgetSummaryForDate(userId: string, dateISO: string, u
     }
 
     // Obtener transacciones del mes con rango (más rápido que traer todo)
-    const monthStartDate = monthRange.start;
-    const monthEndDate = monthRange.end;
+    const monthStartDate = cycleRange.start;
+    const monthEndDate = cycleRange.end;
 
     const loadMonthTransactions = async () => {
       try {
@@ -104,38 +110,49 @@ export async function getBudgetSummaryForDate(userId: string, dateISO: string, u
     let spentBeforeTodayCents = 0;
     let spentTodayCents = 0;
 
-    allTransactionsSnapshot.docs.forEach(doc => {
-      const data = doc.data();
+    const transactions = allTransactionsSnapshot.docs.map(doc => docToObject(doc));
+    const uniqueCurrencies = [...new Set(transactions.map((t: any) => t.currencyCode).filter(Boolean))]
+      .filter(c => c && c !== baseCurrency);
+    const rateMap = await getExchangeRatesMap(uniqueCurrencies, baseCurrency);
+
+    transactions.forEach((data: any) => {
       const occurredAt = data.occurredAt?.toDate?.() || new Date(data.occurredAt);
       const time = occurredAt.getTime();
       const amountCents = data.amountCents || 0;
+      const converted = convertAmountWithRate(amountCents, data.currencyCode || baseCurrency, baseCurrency, rateMap);
 
       // Solo considerar transacciones del mes actual
       if (time >= monthStart && time <= monthEnd) {
         if (data.type === "INCOME") {
-          totalIncomeCents += amountCents;
+          totalIncomeCents += converted;
         } else if (data.type === "EXPENSE") {
           if (time < dayStart) {
-            spentBeforeTodayCents += amountCents;
+            spentBeforeTodayCents += converted;
           } else if (time >= dayStart && time <= dayEnd) {
-            spentTodayCents += amountCents;
+            spentTodayCents += converted;
           }
         }
       }
     });
 
+    const daysInCycle = cycleRange.daysInMonth ?? 30;
+    const dayOfCycle = Math.max(1, Math.floor((dayRange.start.getTime() - cycleRange.start.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+
     const calc = computeDailyBudgetWithRollover({
-      year: monthRange.year,
-      month: monthRange.month,
-      dayOfMonth: dayRange.dayOfMonth,
-      daysInMonth: monthRange.daysInMonth ?? 30,
+      year: cycleRange.year,
+      month: cycleRange.month,
+      dayOfMonth: dayOfCycle,
+      daysInMonth: daysInCycle,
       totalIncomeCents,
       spentBeforeTodayCents,
       spentTodayCents,
       savingGoalCents
     });
 
-    return { params: { date: dateISO, timeZone: userTimeZone }, data: calc };
+    return {
+      params: { date: dateISO, timeZone: userTimeZone, budgetCycleDay: cycleRange.cycleDay || null },
+      data: calc
+    };
   } catch (error: any) {
     console.error("getBudgetSummaryForDate error:", error);
     // Retornar datos vacíos en caso de error

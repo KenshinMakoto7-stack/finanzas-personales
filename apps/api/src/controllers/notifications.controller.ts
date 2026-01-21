@@ -209,7 +209,13 @@ async function computeNotifications(userId: string, date?: string) {
     }
   }
 
-  const budgetSummary = await getBudgetSummaryForDate(userId, targetDate.toISOString().slice(0, 10), tz);
+  const budgetSummary = await getBudgetSummaryForDate(
+    userId,
+    targetDate.toISOString().slice(0, 10),
+    tz,
+    userData.currencyCode || "UYU",
+    userData.budgetCycleDay ?? null
+  );
   if (budgetSummary.data?.safety?.overspend) {
     notifications.push({
       type: "BUDGET_OVERSEND",

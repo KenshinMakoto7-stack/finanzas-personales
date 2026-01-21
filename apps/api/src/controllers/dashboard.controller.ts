@@ -2,7 +2,7 @@ import { Response } from "express";
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "../lib/firebase.js";
 import { AuthRequest } from "../server/middleware/auth.js";
-import { monthRangeUTC, dayRangeUTC } from "../lib/time.js";
+import { monthRangeUTC, dayRangeUTC, cycleRangeUTC } from "../lib/time.js";
 import { docToObject, getDocumentsByIds } from "../lib/firestore-helpers.js";
 import { getBudgetSummaryForDate } from "../services/budget.service.js";
 import { getExchangeRatesMap, convertAmountWithRate } from "../services/exchange.service.js";
@@ -42,6 +42,21 @@ export async function dashboardSummary(req: AuthRequest, res: Response) {
       return res.json(cached.data);
     }
 
+    // Cache distribuido en Firestore
+    try {
+      const cacheDoc = await db.collection("_cache").doc(`dashboard_summary_${cacheKey}`).get();
+      if (cacheDoc.exists) {
+        const data = cacheDoc.data();
+        const cacheTimestamp = data?.timestamp?.toMillis?.() || 0;
+        if ((now - cacheTimestamp) < CACHE_TTL_MS && data?.payload) {
+          dashboardCache.set(cacheKey, { timestamp: now, data: data.payload });
+          return res.json(data.payload);
+        }
+      }
+    } catch {
+      // Si falla el cache distribuido, continuar sin bloquear
+    }
+
     const userDoc = await db.collection("users").doc(userId).get();
     if (!userDoc.exists) {
       return res.status(404).json({ error: "Usuario no encontrado" });
@@ -50,13 +65,16 @@ export async function dashboardSummary(req: AuthRequest, res: Response) {
     const userData = userDoc.data()!;
     const tz = userData.timeZone || "UTC";
     const baseCurrency = userData.currencyCode || "UYU";
+    const budgetCycleDay = userData.budgetCycleDay ?? null;
 
-    const monthRange = monthRangeUTC(dateParam, tz);
+    const monthRange = budgetCycleDay
+      ? cycleRangeUTC(dateParam, tz, budgetCycleDay)
+      : monthRangeUTC(dateParam, tz);
     const dayRange = dayRangeUTC(dateParam, tz);
     const monthAnchor = new Date(Date.UTC(monthRange.year, monthRange.month - 1, 1));
 
     const [budget, accountsSnapshot, goalSnapshot, monthTxSnapshot] = await Promise.all([
-      getBudgetSummaryForDate(userId, dateParam, tz),
+      getBudgetSummaryForDate(userId, dateParam, tz, baseCurrency, budgetCycleDay),
       db.collection("accounts").where("userId", "==", userId).get(),
       db.collection("monthlyGoals")
         .where("userId", "==", userId)
@@ -221,11 +239,16 @@ export async function dashboardSummary(req: AuthRequest, res: Response) {
         locale: userData.locale || "en-US",
         timeZone: tz,
         defaultAccountId: userData.defaultAccountId || null,
-        defaultCategoryId: userData.defaultCategoryId || null
+        defaultCategoryId: userData.defaultCategoryId || null,
+        budgetCycleDay
       }
     };
 
     dashboardCache.set(cacheKey, { timestamp: now, data: response });
+    db.collection("_cache").doc(`dashboard_summary_${cacheKey}`).set({
+      payload: response,
+      timestamp: Timestamp.now()
+    }).catch(() => null);
     res.json(response);
   } catch (error: any) {
     console.error("Dashboard summary error:", error);
