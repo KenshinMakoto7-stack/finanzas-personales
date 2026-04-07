@@ -34,7 +34,7 @@ const COLORS = [
 ];
 
 export default function AjustesPage() {
-  const { user } = useAuth();
+  const { user, clearCategories } = useAuth();
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -183,6 +183,7 @@ export default function AjustesPage() {
       });
       const cats = await apiFetch<Category[]>("/categories");
       setCategories(cats);
+      clearCategories();
       setNewCatName("");
       showSuccess("Categoría creada");
     } catch (err) {
@@ -208,6 +209,7 @@ export default function AjustesPage() {
       });
       const cats = await apiFetch<Category[]>("/categories");
       setCategories(cats);
+      clearCategories();
       setNewSubName("");
       setAddingSubTo(null);
       showSuccess("Subcategoría creada");
@@ -231,6 +233,7 @@ export default function AjustesPage() {
       });
       const cats = await apiFetch<Category[]>("/categories");
       setCategories(cats);
+      clearCategories();
       setEditingCat(null);
       showSuccess("Categoría actualizada");
     } catch (err) {
@@ -243,6 +246,7 @@ export default function AjustesPage() {
       await apiFetch(`/categories/${id}`, { method: "DELETE" });
       const cats = await apiFetch<Category[]>("/categories");
       setCategories(cats);
+      clearCategories();
       showSuccess("Categoría eliminada");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar");

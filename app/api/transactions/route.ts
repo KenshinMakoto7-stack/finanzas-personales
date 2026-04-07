@@ -9,33 +9,38 @@ export async function GET(req: NextRequest) {
     const max = Math.min(Number(url.searchParams.get("limit")) || 200, 500);
     const month = url.searchParams.get("month"); // "2026-04"
 
-    const snapshot = await db
+    let query = db
       .collection("transactions")
       .where("userId", "==", userId)
-      .get();
-
-    let transactions = snapshot.docs
-      .filter((doc) => doc.data().appVersion === "2.0")
-      .map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          amount: data.amount,
-          type: data.type,
-          categoryId: data.categoryId,
-          categoryName: data.categoryName,
-          note: data.note || "",
-          date: data.date,
-          createdAt: data.createdAt,
-        };
-      })
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      .where("appVersion", "==", "2.0");
 
     if (month) {
-      transactions = transactions.filter((t) => t.date?.startsWith(month));
+      const [y, m] = month.split("-").map(Number);
+      const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+      query = query
+        .where("date", ">=", month)
+        .where("date", "<", nextMonth);
     }
 
-    return NextResponse.json(transactions.slice(0, max));
+    query = query.orderBy("date", "desc").limit(max);
+
+    const snapshot = await query.get();
+
+    const transactions = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        amount: data.amount,
+        type: data.type,
+        categoryId: data.categoryId,
+        categoryName: data.categoryName,
+        note: data.note || "",
+        date: data.date,
+        createdAt: data.createdAt,
+      };
+    });
+
+    return NextResponse.json(transactions);
   });
 }
 

@@ -45,7 +45,7 @@ interface FixedExpense {
 }
 
 export default function HoyPage() {
-  const { user } = useAuth();
+  const { user, categories: cachedCats, categoriesLoaded, setCategories: setCachedCats } = useAuth();
   const today = new Date();
   const month = MONTH_NAMES[today.getMonth()];
   const year = today.getFullYear();
@@ -53,7 +53,7 @@ export default function HoyPage() {
   const daysInMonth = new Date(year, today.getMonth() + 1, 0).getDate();
   const daysRemaining = daysInMonth - dayOfMonth + 1;
 
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Category[]>(cachedCats);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [settings, setSettings] = useState<Settings>({ monthlyIncome: 0, monthlySavings: 0 });
   const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>([]);
@@ -78,13 +78,18 @@ export default function HoyPage() {
   const loadData = useCallback(async () => {
     try {
       const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
-      const [cats, txns, stngs, fixed] = await Promise.all([
-        apiFetch<Category[]>("/categories"),
+      const needCats = !categoriesLoaded;
+      const promises: [Promise<Category[]> | null, Promise<Transaction[]>, Promise<Settings>, Promise<FixedExpense[]>] = [
+        needCats ? apiFetch<Category[]>("/categories") : null,
         apiFetch<Transaction[]>(`/transactions?month=${currentMonth}&limit=200`),
         apiFetch<Settings>("/settings"),
         apiFetch<FixedExpense[]>("/fixed-expenses"),
-      ]);
-      setCategories(cats);
+      ];
+      const [cats, txns, stngs, fixed] = await Promise.all(promises);
+      if (cats) {
+        setCategories(cats);
+        setCachedCats(cats);
+      }
       setTransactions(txns);
       setSettings(stngs);
       setFixedExpenses(fixed);
@@ -94,7 +99,7 @@ export default function HoyPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [categoriesLoaded, setCachedCats]);
 
   useEffect(() => {
     if (user) loadData();
@@ -145,6 +150,7 @@ export default function HoyPage() {
       });
       const cats = await apiFetch<Category[]>("/categories");
       setCategories(cats);
+      setCachedCats(cats);
       const newParent = cats.find((c) => c.id === created.id);
       if (newParent) {
         setSelectedParent(newParent);

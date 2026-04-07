@@ -28,6 +28,7 @@ interface Category {
   name: string;
   color: string;
   type: string;
+  parentId: string | null;
   children?: Category[];
 }
 
@@ -40,13 +41,13 @@ interface CategoryBreakdown {
 }
 
 export default function ResumenPage() {
-  const { user } = useAuth();
+  const { user, categories: cachedCats, categoriesLoaded, setCategories: setCachedCats } = useAuth();
   const today = new Date();
 
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth());
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Category[]>(cachedCats);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -55,19 +56,23 @@ export default function ResumenPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const needCats = !categoriesLoaded;
       const [txns, cats] = await Promise.all([
         apiFetch<Transaction[]>(`/transactions?month=${monthKey}`),
-        apiFetch<Category[]>("/categories"),
+        needCats ? apiFetch<Category[]>("/categories") : Promise.resolve(null),
       ]);
       setTransactions(txns);
-      setCategories(cats);
+      if (cats) {
+        setCategories(cats);
+        setCachedCats(cats);
+      }
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cargar");
     } finally {
       setLoading(false);
     }
-  }, [monthKey]);
+  }, [monthKey, categoriesLoaded, setCachedCats]);
 
   useEffect(() => {
     if (user) loadData();
