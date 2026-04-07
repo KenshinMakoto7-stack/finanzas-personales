@@ -10,20 +10,21 @@ export async function GET(req: NextRequest) {
       .where("userId", "==", userId)
       .get();
 
+    interface CatDoc { id: string; name: string; parentId: string | null; [k: string]: unknown }
     const all = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
-    }));
+    }) as CatDoc);
 
     const parents = all
       .filter((c) => !c.parentId)
-      .sort((a, b) => (a.name as string).localeCompare(b.name as string));
+      .sort((a, b) => a.name.localeCompare(b.name));
 
     const tree = parents.map((p) => ({
       ...p,
       children: all
         .filter((c) => c.parentId === p.id)
-        .sort((a, b) => (a.name as string).localeCompare(b.name as string)),
+        .sort((a, b) => a.name.localeCompare(b.name)),
     }));
 
     return NextResponse.json(tree);

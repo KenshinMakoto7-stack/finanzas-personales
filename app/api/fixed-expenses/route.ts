@@ -10,9 +10,10 @@ export async function GET(req: NextRequest) {
       .where("userId", "==", userId)
       .get();
 
+    interface FixedDoc { id: string; name: string; [k: string]: unknown }
     const items = snapshot.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() }))
-      .sort((a, b) => (a.name as string).localeCompare(b.name as string));
+      .map((doc) => ({ id: doc.id, ...doc.data() }) as FixedDoc)
+      .sort((a, b) => a.name.localeCompare(b.name));
 
     return NextResponse.json(items);
   });
