@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { SpotlightProvider, SpotlightTour, useSpotlight } from "react-tourlight";
 import "react-tourlight/styles.css";
 
@@ -9,32 +9,50 @@ interface TourStep {
   title: string;
   content: string;
   placement?: "top" | "bottom" | "left" | "right";
+  spotlightPadding?: number;
 }
 
 interface PageTourProps {
   tourId: string;
   steps: TourStep[];
-  delay?: number;
 }
 
 function storageKey(tourId: string) {
   return `tour_${tourId}_done`;
 }
 
-function TourAutoStart({ tourId, delay = 800 }: { tourId: string; delay: number }) {
+function TourAutoStart({ tourId, targets }: { tourId: string; targets: string[] }) {
   const { start } = useSpotlight();
 
+  const tryStart = useCallback(() => {
+    const allExist = targets.every((sel) => document.querySelector(sel));
+    if (allExist) {
+      requestAnimationFrame(() => {
+        start(tourId);
+      });
+      return true;
+    }
+    return false;
+  }, [tourId, targets, start]);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      start(tourId);
-    }, delay);
-    return () => clearTimeout(timer);
-  }, [tourId, delay, start]);
+    if (tryStart()) return;
+
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      if (tryStart() || attempts > 20) {
+        clearInterval(interval);
+      }
+    }, 300);
+
+    return () => clearInterval(interval);
+  }, [tryStart]);
 
   return null;
 }
 
-export default function PageTour({ tourId, steps, delay = 800 }: PageTourProps) {
+export default function PageTour({ tourId, steps }: PageTourProps) {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
@@ -57,6 +75,14 @@ export default function PageTour({ tourId, steps, delay = 800 }: PageTourProps) 
 
   if (!show) return null;
 
+  const stepsWithPadding = steps.map((s) => ({
+    ...s,
+    spotlightPadding: s.spotlightPadding ?? 10,
+    spotlightRadius: 16,
+  }));
+
+  const targets = steps.map((s) => s.target);
+
   return (
     <SpotlightProvider
       labels={{
@@ -70,11 +96,11 @@ export default function PageTour({ tourId, steps, delay = 800 }: PageTourProps) 
     >
       <SpotlightTour
         id={tourId}
-        steps={steps}
+        steps={stepsWithPadding}
         onComplete={handleComplete}
         onSkip={handleComplete}
       />
-      <TourAutoStart tourId={tourId} delay={delay} />
+      <TourAutoStart tourId={tourId} targets={targets} />
     </SpotlightProvider>
   );
 }

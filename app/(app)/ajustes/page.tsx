@@ -636,7 +636,7 @@ export default function AjustesPage() {
             target: "#tour-cats",
             title: "Categorías",
             content: "Creá y personalizá tus categorías de gasto e ingreso.",
-            placement: "left",
+            placement: "bottom",
           },
         ]}
       />

@@ -541,13 +541,13 @@ export default function HoyPage() {
             target: "#tour-formulario",
             title: "Registro rápido",
             content: "Registrá un gasto o ingreso en segundos. Elegí el tipo, monto y categoría.",
-            placement: "top",
+            placement: "bottom",
           },
           {
             target: "#tour-categorias",
             title: "Categorías",
             content: "Elegí la categoría para clasificar tu movimiento. Podés crear nuevas con + Nueva.",
-            placement: "top",
+            placement: "bottom",
           },
           {
             target: "#tour-transacciones",

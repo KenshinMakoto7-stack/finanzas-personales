@@ -310,7 +310,7 @@ export default function ResumenPage() {
             target: "#tour-desglose",
             title: "Distribución de gastos",
             content: "Acá ves en qué categorías se fue tu dinero, con porcentajes.",
-            placement: "left",
+            placement: "bottom",
           },
           {
             target: "#tour-top-gastos",
