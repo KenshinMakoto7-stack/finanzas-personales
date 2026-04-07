@@ -1,8 +1,12 @@
 import { getFirebaseAuth } from "./firebase";
 
+interface ApiFetchOptions extends Omit<RequestInit, "body"> {
+  body?: Record<string, unknown>;
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
-  options?: RequestInit & { body?: unknown }
+  options?: ApiFetchOptions
 ): Promise<T> {
   const auth = getFirebaseAuth();
   const user = auth.currentUser;
