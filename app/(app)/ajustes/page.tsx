@@ -6,6 +6,7 @@ import { getFirebaseAuth } from "@/lib/firebase";
 import { useAuth } from "@/store/auth";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 interface FixedExpense {
   id: string;
@@ -46,6 +47,9 @@ export default function AjustesPage() {
   const [newFixedName, setNewFixedName] = useState("");
   const [newFixedAmount, setNewFixedAmount] = useState("");
   const [addingFixed, setAddingFixed] = useState(false);
+  const [editingFixed, setEditingFixed] = useState<string | null>(null);
+  const [editFixedName, setEditFixedName] = useState("");
+  const [editFixedAmount, setEditFixedAmount] = useState("");
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [newCatName, setNewCatName] = useState("");
@@ -55,10 +59,14 @@ export default function AjustesPage() {
   const [newSubName, setNewSubName] = useState("");
   const [addingSubTo, setAddingSubTo] = useState<string | null>(null);
   const [expandedCat, setExpandedCat] = useState<string | null>(null);
+  const [editingCat, setEditingCat] = useState<string | null>(null);
+  const [editCatName, setEditCatName] = useState("");
+  const [editCatColor, setEditCatColor] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<{ type: "fixed" | "category"; id: string; name: string } | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -129,12 +137,37 @@ export default function AjustesPage() {
     }
   }
 
+  function startEditFixed(fe: FixedExpense) {
+    setEditingFixed(fe.id);
+    setEditFixedName(fe.name);
+    setEditFixedAmount(String(fe.amount));
+  }
+
+  async function handleSaveFixed(id: string) {
+    if (!editFixedName.trim() || !editFixedAmount) return;
+    try {
+      await apiFetch(`/fixed-expenses/${id}`, {
+        method: "PUT",
+        body: { name: editFixedName.trim(), amount: Number(editFixedAmount) },
+      });
+      setFixedExpenses((prev) =>
+        prev.map((f) => f.id === id ? { ...f, name: editFixedName.trim(), amount: Math.round(Math.abs(Number(editFixedAmount))) } : f)
+      );
+      setEditingFixed(null);
+      showSuccess("Gasto fijo actualizado");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al actualizar");
+    }
+  }
+
   async function handleDeleteFixed(id: string) {
     try {
       await apiFetch(`/fixed-expenses/${id}`, { method: "DELETE" });
       setFixedExpenses((prev) => prev.filter((f) => f.id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar");
+    } finally {
+      setConfirmDelete(null);
     }
   }
 
@@ -183,6 +216,28 @@ export default function AjustesPage() {
     }
   }
 
+  function startEditCategory(cat: Category) {
+    setEditingCat(cat.id);
+    setEditCatName(cat.name);
+    setEditCatColor(cat.color);
+  }
+
+  async function handleSaveCategory(id: string) {
+    if (!editCatName.trim()) return;
+    try {
+      await apiFetch(`/categories/${id}`, {
+        method: "PUT",
+        body: { name: editCatName.trim(), color: editCatColor },
+      });
+      const cats = await apiFetch<Category[]>("/categories");
+      setCategories(cats);
+      setEditingCat(null);
+      showSuccess("Categoría actualizada");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al actualizar");
+    }
+  }
+
   async function handleDeleteCategory(id: string) {
     try {
       await apiFetch(`/categories/${id}`, { method: "DELETE" });
@@ -191,6 +246,8 @@ export default function AjustesPage() {
       showSuccess("Categoría eliminada");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar");
+    } finally {
+      setConfirmDelete(null);
     }
   }
 
@@ -299,12 +356,29 @@ export default function AjustesPage() {
             {fixedExpenses.length > 0 && (
               <div className="mb-4 space-y-1">
                 {fixedExpenses.map((fe) => (
-                  <div key={fe.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50">
+                  editingFixed === fe.id ? (
+                    <div key={fe.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50">
+                      <input type="text" value={editFixedName} onChange={(e) => setEditFixedName(e.target.value)} autoFocus
+                        className="flex-1 min-w-0 px-2 py-1 rounded-md border border-slate-200 text-sm focus:border-brand focus:outline-none"
+                        onKeyDown={(e) => { if (e.key === "Enter") handleSaveFixed(fe.id); if (e.key === "Escape") setEditingFixed(null); }} />
+                      <div className="flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200">
+                        <span className="text-xs text-slate-400">$</span>
+                        <input type="number" inputMode="numeric" min="1" value={editFixedAmount}
+                          onChange={(e) => setEditFixedAmount(e.target.value)}
+                          className="w-16 text-sm font-bold outline-none bg-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                      </div>
+                      <button onClick={() => handleSaveFixed(fe.id)} className="px-2 py-1 bg-brand text-white text-xs font-semibold rounded-md">✓</button>
+                      <button onClick={() => setEditingFixed(null)} className="px-2 py-1 text-xs text-slate-400">✕</button>
+                    </div>
+                  ) : (
+                  <div key={fe.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors"
+                    onClick={() => startEditFixed(fe)}>
                     <span className="flex-1 text-sm font-medium text-slate-700 truncate">{fe.name}</span>
                     <span className="text-sm font-bold text-slate-900 shrink-0">{fmt(fe.amount)}</span>
-                    <button onClick={() => handleDeleteFixed(fe.id)}
+                    <button onClick={(e) => { e.stopPropagation(); setConfirmDelete({ type: "fixed", id: fe.id, name: fe.name }); }}
                       className="p-1 rounded text-slate-300 hover:text-expense hover:bg-red-50 transition-colors" title="Eliminar">✕</button>
                   </div>
+                  )
                 ))}
                 <div className="flex justify-between px-3 pt-2 border-t border-slate-200 text-sm font-bold text-slate-900">
                   <span>Total</span><span>{fmt(totalFixed)}</span>
@@ -337,8 +411,27 @@ export default function AjustesPage() {
             <div className="space-y-1 mb-4">
               {expenseCats.map((cat) => (
                 <div key={cat.id}>
+                  {editingCat === cat.id ? (
+                    <div className="px-3 py-2 rounded-lg bg-slate-50 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input type="text" value={editCatName} onChange={(e) => setEditCatName(e.target.value)} autoFocus
+                          className="flex-1 px-2 py-1.5 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none"
+                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveCategory(cat.id); if (e.key === "Escape") setEditingCat(null); }} />
+                        <button onClick={() => handleSaveCategory(cat.id)} className="px-2 py-1.5 bg-brand text-white text-xs font-semibold rounded-lg">✓</button>
+                        <button onClick={() => setEditingCat(null)} className="px-2 py-1.5 text-xs text-slate-400">✕</button>
+                      </div>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {COLORS.map((c) => (
+                          <button key={c} type="button" onClick={() => setEditCatColor(c)}
+                            className={`w-5 h-5 rounded-full transition-all ${editCatColor === c ? "ring-2 ring-offset-1 ring-brand scale-110" : "hover:scale-110"}`}
+                            style={{ backgroundColor: c }} />
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors">
-                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                    <span className="w-3 h-3 rounded-full shrink-0 cursor-pointer" style={{ backgroundColor: cat.color }}
+                      onClick={() => startEditCategory(cat)} title="Editar" />
                     <button
                       onClick={() => setExpandedCat(expandedCat === cat.id ? null : cat.id)}
                       className="flex-1 text-sm font-medium text-slate-700 text-left truncate"
@@ -348,16 +441,19 @@ export default function AjustesPage() {
                         <span className="text-slate-400 ml-1">({cat.children.length})</span>
                       )}
                     </button>
-                    <button onClick={() => handleDeleteCategory(cat.id)}
+                    <button onClick={() => startEditCategory(cat)}
+                      className="p-1 rounded text-slate-300 hover:text-brand transition-colors" title="Editar">✎</button>
+                    <button onClick={() => setConfirmDelete({ type: "category", id: cat.id, name: cat.name })}
                       className="p-1 rounded text-slate-300 hover:text-expense hover:bg-red-50 transition-colors" title="Eliminar">✕</button>
                   </div>
+                  )}
 
                   {expandedCat === cat.id && (
                     <div className="ml-6 pl-3 border-l-2 border-slate-100 space-y-1 py-1">
                       {cat.children?.map((sub) => (
                         <div key={sub.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md">
                           <span className="flex-1 text-xs text-slate-600">{sub.name}</span>
-                          <button onClick={() => handleDeleteCategory(sub.id)}
+                          <button onClick={() => setConfirmDelete({ type: "category", id: sub.id, name: sub.name })}
                             className="p-0.5 rounded text-slate-300 hover:text-expense text-xs transition-colors">✕</button>
                         </div>
                       ))}
@@ -391,11 +487,72 @@ export default function AjustesPage() {
                 <p className="text-xs text-slate-400 px-3 py-2">No hay categorías de ingreso</p>
               ) : (
                 incomeCats.map((cat) => (
-                  <div key={cat.id} className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors">
-                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                    <span className="flex-1 text-sm font-medium text-slate-700 truncate">{cat.name}</span>
-                    <button onClick={() => handleDeleteCategory(cat.id)}
-                      className="p-1 rounded text-slate-300 hover:text-expense hover:bg-red-50 transition-colors" title="Eliminar">✕</button>
+                  <div key={cat.id}>
+                    {editingCat === cat.id ? (
+                      <div className="px-3 py-2 rounded-lg bg-slate-50 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <input type="text" value={editCatName} onChange={(e) => setEditCatName(e.target.value)} autoFocus
+                            className="flex-1 px-2 py-1.5 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none"
+                            onKeyDown={(e) => { if (e.key === "Enter") handleSaveCategory(cat.id); if (e.key === "Escape") setEditingCat(null); }} />
+                          <button onClick={() => handleSaveCategory(cat.id)} className="px-2 py-1.5 bg-brand text-white text-xs font-semibold rounded-lg">✓</button>
+                          <button onClick={() => setEditingCat(null)} className="px-2 py-1.5 text-xs text-slate-400">✕</button>
+                        </div>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {COLORS.map((c) => (
+                            <button key={c} type="button" onClick={() => setEditCatColor(c)}
+                              className={`w-5 h-5 rounded-full transition-all ${editCatColor === c ? "ring-2 ring-offset-1 ring-brand scale-110" : "hover:scale-110"}`}
+                              style={{ backgroundColor: c }} />
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors">
+                      <span className="w-3 h-3 rounded-full shrink-0 cursor-pointer" style={{ backgroundColor: cat.color }}
+                        onClick={() => startEditCategory(cat)} title="Editar" />
+                      <button
+                        onClick={() => setExpandedCat(expandedCat === cat.id ? null : cat.id)}
+                        className="flex-1 text-sm font-medium text-slate-700 text-left truncate"
+                      >
+                        {cat.name}
+                        {cat.children && cat.children.length > 0 && (
+                          <span className="text-slate-400 ml-1">({cat.children.length})</span>
+                        )}
+                      </button>
+                      <button onClick={() => startEditCategory(cat)}
+                        className="p-1 rounded text-slate-300 hover:text-brand transition-colors" title="Editar">✎</button>
+                      <button onClick={() => setConfirmDelete({ type: "category", id: cat.id, name: cat.name })}
+                        className="p-1 rounded text-slate-300 hover:text-expense hover:bg-red-50 transition-colors" title="Eliminar">✕</button>
+                    </div>
+                    )}
+
+                    {expandedCat === cat.id && (
+                      <div className="ml-6 pl-3 border-l-2 border-slate-100 space-y-1 py-1">
+                        {cat.children?.map((sub) => (
+                          <div key={sub.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md">
+                            <span className="flex-1 text-xs text-slate-600">{sub.name}</span>
+                            <button onClick={() => setConfirmDelete({ type: "category", id: sub.id, name: sub.name })}
+                              className="p-0.5 rounded text-slate-300 hover:text-expense text-xs transition-colors">✕</button>
+                          </div>
+                        ))}
+                        {addingSubTo === cat.id ? (
+                          <div className="flex gap-1.5 mt-1">
+                            <input type="text" value={newSubName} onChange={(e) => setNewSubName(e.target.value)}
+                              placeholder="Nombre" autoFocus
+                              className="flex-1 px-2 py-1 rounded-md border border-slate-200 text-xs focus:border-brand focus:outline-none"
+                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddSubcategory(cat.id); } }} />
+                            <button onClick={() => handleAddSubcategory(cat.id)}
+                              className="px-2 py-1 bg-brand text-white text-xs font-semibold rounded-md">+</button>
+                            <button onClick={() => { setAddingSubTo(null); setNewSubName(""); }}
+                              className="px-2 py-1 text-xs text-slate-400">✕</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => { setAddingSubTo(cat.id); setNewSubName(""); }}
+                            className="text-xs text-brand font-medium hover:underline px-2 py-1">
+                            + Agregar subcategoría
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -434,6 +591,18 @@ export default function AjustesPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title={confirmDelete?.type === "fixed" ? "Eliminar gasto fijo" : "Eliminar categoría"}
+        message={`¿Eliminar "${confirmDelete?.name}"? Esta acción no se puede deshacer.`}
+        onConfirm={() => {
+          if (!confirmDelete) return;
+          if (confirmDelete.type === "fixed") handleDeleteFixed(confirmDelete.id);
+          else handleDeleteCategory(confirmDelete.id);
+        }}
+        onCancel={() => setConfirmDelete(null)}
+      />
 
       {/* Logout */}
       <div className="mt-8">

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/store/auth";
 import { apiFetch } from "@/lib/api";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -72,12 +73,14 @@ export default function HoyPage() {
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [creatingCat, setCreatingCat] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
+      const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
       const [cats, txns, stngs, fixed] = await Promise.all([
         apiFetch<Category[]>("/categories"),
-        apiFetch<Transaction[]>("/transactions?limit=50"),
+        apiFetch<Transaction[]>(`/transactions?month=${currentMonth}&limit=200`),
         apiFetch<Settings>("/settings"),
         apiFetch<FixedExpense[]>("/fixed-expenses"),
       ]);
@@ -162,6 +165,8 @@ export default function HoyPage() {
       setTransactions((prev) => prev.filter((t) => t.id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar");
+    } finally {
+      setDeleteId(null);
     }
   }
 
@@ -176,22 +181,22 @@ export default function HoyPage() {
   }
 
   // Totals from loaded transactions (current month)
-  const monthStr = `${year}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-  const monthTxns = transactions.filter((t) => t.date?.startsWith(monthStr));
-  const totalExpenses = monthTxns
+  const totalExpenses = transactions
     .filter((t) => t.type === "EXPENSE")
     .reduce((s, t) => s + t.amount, 0);
-  const totalIncome = monthTxns
+  const totalIncome = transactions
     .filter((t) => t.type === "INCOME")
     .reduce((s, t) => s + t.amount, 0);
 
   // Disponible por día = (Ingresos - gastos fijos - gastos variables del mes - ahorro) / días restantes
   const totalFixed = fixedExpenses.reduce((s, f) => s + f.amount, 0);
   const { monthlyIncome, monthlySavings } = settings;
-  const disponibleTotal = monthlyIncome - totalFixed - totalExpenses - monthlySavings;
+  const ingresoReal = monthlyIncome + totalIncome;
+  const disponibleTotal = ingresoReal - totalFixed - totalExpenses - monthlySavings;
   const disponiblePorDia = daysRemaining > 0 ? Math.round(disponibleTotal / daysRemaining) : 0;
-  const budgetUsedPercent = monthlyIncome > 0
-    ? Math.max(0, Math.min(100, (disponibleTotal / (monthlyIncome - totalFixed - monthlySavings)) * 100))
+  const baseDisponible = ingresoReal - totalFixed - monthlySavings;
+  const budgetUsedPercent = baseDisponible > 0
+    ? Math.max(0, Math.min(100, (disponibleTotal / baseDisponible) * 100))
     : 100;
 
   if (loading) {
@@ -235,7 +240,7 @@ export default function HoyPage() {
             <p className={`text-4xl font-bold ${disponiblePorDia >= 0 ? "text-income" : "text-expense"}`}>
               {disponiblePorDia < 0 ? "-" : ""}{fmt(Math.abs(disponiblePorDia))}
             </p>
-            {monthlyIncome > 0 ? (
+            {ingresoReal > 0 ? (
               <>
                 <div className="mt-3 h-2 bg-slate-100 rounded-full overflow-hidden">
                   <div
@@ -252,7 +257,7 @@ export default function HoyPage() {
                   </span>
                   {" "}de{" "}
                   <span className="font-semibold text-slate-700">
-                    {fmt(monthlyIncome - totalFixed - monthlySavings)}
+                    {fmt(baseDisponible)}
                   </span>
                 </p>
               </>
@@ -451,15 +456,23 @@ export default function HoyPage() {
         </div>
       </div>
 
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Eliminar transacción"
+        message="¿Estás seguro? Esta acción no se puede deshacer."
+        onConfirm={() => deleteId && handleDelete(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
+
       {/* Recent transactions */}
       <div className="mt-6 mb-8">
         <h2 className="text-lg font-bold text-slate-900 mb-3">
-          Últimos gastos
+          Últimas transacciones
         </h2>
         {transactions.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 text-center">
             <p className="text-slate-400 text-sm">
-              Registrá tu primer gasto arriba para verlo acá
+              Registrá tu primera transacción arriba para verla acá
             </p>
           </div>
         ) : (
@@ -494,7 +507,7 @@ export default function HoyPage() {
                     <p className="text-[10px] text-slate-400">{tx.date}</p>
                   </div>
                   <button
-                    onClick={() => handleDelete(tx.id)}
+                    onClick={() => setDeleteId(tx.id)}
                     className="p-1.5 rounded-lg text-slate-300 hover:text-expense hover:bg-red-50 transition-colors"
                     title="Eliminar"
                   >

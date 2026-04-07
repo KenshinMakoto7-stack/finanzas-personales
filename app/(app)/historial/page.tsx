@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/store/auth";
 import { apiFetch } from "@/lib/api";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -40,6 +41,7 @@ export default function HistorialPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const monthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}`;
 
@@ -86,6 +88,8 @@ export default function HistorialPage() {
       setTransactions((prev) => prev.filter((t) => t.id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar");
+    } finally {
+      setDeleteId(null);
     }
   }
 
@@ -138,6 +142,14 @@ export default function HistorialPage() {
           {error}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteId}
+        title="Eliminar transacción"
+        message="¿Estás seguro? Esta acción no se puede deshacer."
+        onConfirm={() => deleteId && handleDelete(deleteId)}
+        onCancel={() => setDeleteId(null)}
+      />
 
       {/* Summary bar */}
       <div className="grid grid-cols-3 gap-3 mb-6">
@@ -217,7 +229,7 @@ export default function HistorialPage() {
                           {fmt(tx.amount)}
                         </p>
                         <button
-                          onClick={() => handleDelete(tx.id)}
+                          onClick={() => setDeleteId(tx.id)}
                           className="p-1.5 rounded-lg text-slate-300 hover:text-expense hover:bg-red-50 transition-colors"
                           title="Eliminar"
                         >

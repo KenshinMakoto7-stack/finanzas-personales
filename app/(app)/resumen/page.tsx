@@ -259,7 +259,7 @@ export default function ResumenPage() {
                 Gastos más grandes
               </h2>
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                {expenses
+                {[...expenses]
                   .sort((a, b) => b.amount - a.amount)
                   .slice(0, 5)
                   .map((tx, i, arr) => (
