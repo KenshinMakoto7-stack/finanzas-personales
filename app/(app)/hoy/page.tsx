@@ -73,6 +73,7 @@ export default function HoyPage() {
   // Inline new category
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState("");
+  const [newCatParentId, setNewCatParentId] = useState<string | null>(null);
   const [creatingCat, setCreatingCat] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -145,19 +146,39 @@ export default function HoyPage() {
     if (!newCatName.trim()) return;
     setCreatingCat(true);
     try {
+      const parentCat = newCatParentId
+        ? filteredCategories.find((c) => c.id === newCatParentId)
+        : null;
+
       const created = await apiFetch<Category>("/categories", {
         method: "POST",
-        body: { name: newCatName.trim(), type: txType, color: "#94a3b8" },
+        body: {
+          name: newCatName.trim(),
+          type: txType,
+          color: parentCat?.color || "#94a3b8",
+          parentId: newCatParentId || undefined,
+        },
       });
       const cats = await apiFetch<Category[]>("/categories");
       setCategories(cats);
       setCachedCats(cats);
-      const newParent = cats.find((c) => c.id === created.id);
-      if (newParent) {
-        setSelectedParent(newParent);
-        setSelectedChild(null);
+
+      if (newCatParentId) {
+        const parent = cats.find((c) => c.id === newCatParentId);
+        if (parent) {
+          setSelectedParent(parent);
+          const child = parent.children?.find((ch) => ch.id === created.id);
+          setSelectedChild(child || null);
+        }
+      } else {
+        const newParent = cats.find((c) => c.id === created.id);
+        if (newParent) {
+          setSelectedParent(newParent);
+          setSelectedChild(null);
+        }
       }
       setNewCatName("");
+      setNewCatParentId(null);
       setShowNewCat(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al crear categoría");
@@ -366,7 +387,7 @@ export default function HoyPage() {
                 ))}
                 <button
                   type="button"
-                  onClick={() => { setShowNewCat(!showNewCat); setSelectedParent(null); setSelectedChild(null); }}
+                  onClick={() => { setShowNewCat(!showNewCat); setNewCatParentId(null); setSelectedParent(null); setSelectedChild(null); }}
                   className={`px-3 py-2 rounded-lg text-xs font-semibold text-left transition-all border-2 border-dashed ${
                     showNewCat
                       ? "border-brand bg-brand-light text-brand"
@@ -379,24 +400,38 @@ export default function HoyPage() {
 
               {/* Inline new category form */}
               {showNewCat && (
-                <div className="mt-2 flex gap-2">
-                  <input
-                    type="text"
-                    value={newCatName}
-                    onChange={(e) => setNewCatName(e.target.value)}
-                    placeholder={txType === "EXPENSE" ? "Ej: Devolución" : "Ej: Freelance"}
-                    autoFocus
-                    className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none"
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateCategory(e); } }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleCreateCategory}
-                    disabled={creatingCat || !newCatName.trim()}
-                    className="px-3 py-2 bg-brand text-white text-xs font-semibold rounded-lg hover:bg-brand-hover transition-all disabled:opacity-40"
+                <div className="mt-2 space-y-2">
+                  <select
+                    value={newCatParentId || ""}
+                    onChange={(e) => setNewCatParentId(e.target.value || null)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none bg-white text-slate-700"
                   >
-                    {creatingCat ? "..." : "Crear"}
-                  </button>
+                    <option value="">Categoría principal (nueva)</option>
+                    {filteredCategories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        Subcategoría de {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      placeholder={newCatParentId ? "Nombre de subcategoría" : (txType === "EXPENSE" ? "Ej: Transporte" : "Ej: Freelance")}
+                      autoFocus
+                      className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none"
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateCategory(e); } }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCreateCategory}
+                      disabled={creatingCat || !newCatName.trim()}
+                      className="px-3 py-2 bg-brand text-white text-xs font-semibold rounded-lg hover:bg-brand-hover transition-all disabled:opacity-40"
+                    >
+                      {creatingCat ? "..." : "Crear"}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
