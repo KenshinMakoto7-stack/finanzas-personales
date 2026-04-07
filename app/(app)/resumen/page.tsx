@@ -20,6 +20,7 @@ interface Transaction {
   categoryName: string;
   categoryId: string;
   date: string;
+  note?: string;
 }
 
 interface Category {
