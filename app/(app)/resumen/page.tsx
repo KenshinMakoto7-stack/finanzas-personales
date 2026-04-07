@@ -87,7 +87,7 @@ export default function ResumenPage() {
         needCats ? apiFetch<Category[]>("/categories") : Promise.resolve(null),
         apiFetch<Settings>("/settings"),
         apiFetch<FixedExpense[]>("/fixed-expenses"),
-        apiFetch<Debt[]>("/debts"),
+        apiFetch<Debt[]>("/debts").catch(() => [] as Debt[]),
       ]);
       setTransactions(txns);
       if (cats) {

@@ -4,22 +4,27 @@ import { getDb } from "@/lib/firebase-admin";
 
 export async function GET(req: NextRequest) {
   return withAuth(req, async (userId) => {
-    const db = getDb();
-    const snapshot = await db
-      .collection("debts")
-      .where("userId", "==", userId)
-      .get();
+    try {
+      const db = getDb();
+      const snapshot = await db
+        .collection("debts")
+        .where("userId", "==", userId)
+        .get();
 
-    interface DebtDoc { id: string; name: string; status: string; [k: string]: unknown }
-    const items = snapshot.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() }) as DebtDoc)
-      .sort((a, b) => {
-        if (a.status === "active" && b.status !== "active") return -1;
-        if (a.status !== "active" && b.status === "active") return 1;
-        return a.name.localeCompare(b.name);
-      });
+      interface DebtDoc { id: string; name: string; status: string; [k: string]: unknown }
+      const items = snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }) as DebtDoc)
+        .sort((a, b) => {
+          if (a.status === "active" && b.status !== "active") return -1;
+          if (a.status !== "active" && b.status === "active") return 1;
+          return a.name.localeCompare(b.name);
+        });
 
-    return NextResponse.json(items);
+      return NextResponse.json(items);
+    } catch (err) {
+      console.error("Error fetching debts:", err);
+      return NextResponse.json([], { status: 200 });
+    }
   });
 }
 

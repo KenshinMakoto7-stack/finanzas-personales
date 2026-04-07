@@ -97,7 +97,7 @@ export default function HoyPage() {
         apiFetch<Transaction[]>(`/transactions?month=${currentMonth}&limit=200`),
         apiFetch<Settings>("/settings"),
         apiFetch<FixedExpense[]>("/fixed-expenses"),
-        apiFetch<Debt[]>("/debts"),
+        apiFetch<Debt[]>("/debts").catch(() => [] as Debt[]),
       ]);
       if (cats) {
         setCategories(cats);

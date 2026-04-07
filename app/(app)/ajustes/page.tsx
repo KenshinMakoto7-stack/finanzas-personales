@@ -95,7 +95,7 @@ export default function AjustesPage() {
         apiFetch<{ monthlyIncome: number; monthlySavings: number }>("/settings"),
         apiFetch<FixedExpense[]>("/fixed-expenses"),
         apiFetch<Category[]>("/categories"),
-        apiFetch<Debt[]>("/debts"),
+        apiFetch<Debt[]>("/debts").catch(() => [] as Debt[]),
       ]);
       setMonthlyIncome(settings.monthlyIncome ? String(settings.monthlyIncome) : "");
       setMonthlySavings(settings.monthlySavings ? String(settings.monthlySavings) : "");
