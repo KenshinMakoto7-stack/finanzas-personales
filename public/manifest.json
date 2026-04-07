@@ -1,0 +1,18 @@
+{
+  "name": "Finanzas",
+  "short_name": "Finanzas",
+  "description": "Control de gastos personales",
+  "start_url": "/hoy",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#4F46E5",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
