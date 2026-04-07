@@ -24,6 +24,17 @@ interface Category {
   children?: Category[];
 }
 
+interface Debt {
+  id: string;
+  name: string;
+  totalAmount: number;
+  installmentAmount: number;
+  totalInstallments: number;
+  paidInstallments: number;
+  dueDay: number;
+  status: "active" | "completed";
+}
+
 function fmt(n: number): string {
   return `$ ${n.toLocaleString("es-UY")}`;
 }
@@ -64,22 +75,33 @@ export default function AjustesPage() {
   const [editCatName, setEditCatName] = useState("");
   const [editCatColor, setEditCatColor] = useState("");
 
+  const [debts, setDebts] = useState<Debt[]>([]);
+  const [newDebtName, setNewDebtName] = useState("");
+  const [newDebtTotal, setNewDebtTotal] = useState("");
+  const [newDebtInstallment, setNewDebtInstallment] = useState("");
+  const [newDebtInstallments, setNewDebtInstallments] = useState("");
+  const [newDebtDueDay, setNewDebtDueDay] = useState("");
+  const [addingDebt, setAddingDebt] = useState(false);
+  const [showDebtForm, setShowDebtForm] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState<{ type: "fixed" | "category"; id: string; name: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ type: "fixed" | "category" | "debt"; id: string; name: string } | null>(null);
 
   const loadData = useCallback(async () => {
     try {
-      const [settings, fixed, cats] = await Promise.all([
+      const [settings, fixed, cats, dts] = await Promise.all([
         apiFetch<{ monthlyIncome: number; monthlySavings: number }>("/settings"),
         apiFetch<FixedExpense[]>("/fixed-expenses"),
         apiFetch<Category[]>("/categories"),
+        apiFetch<Debt[]>("/debts"),
       ]);
       setMonthlyIncome(settings.monthlyIncome ? String(settings.monthlyIncome) : "");
       setMonthlySavings(settings.monthlySavings ? String(settings.monthlySavings) : "");
       setFixedExpenses(fixed);
       setCategories(cats);
+      setDebts(dts);
       setSettingsLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cargar");
@@ -256,6 +278,72 @@ export default function AjustesPage() {
     }
   }
 
+  async function handleAddDebt(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newDebtName.trim() || !newDebtTotal || !newDebtInstallment || !newDebtInstallments) return;
+    setAddingDebt(true);
+    setError("");
+    try {
+      await apiFetch("/debts", {
+        method: "POST",
+        body: {
+          name: newDebtName.trim(),
+          totalAmount: Number(newDebtTotal),
+          installmentAmount: Number(newDebtInstallment),
+          totalInstallments: Number(newDebtInstallments),
+          dueDay: Number(newDebtDueDay) || 1,
+        },
+      });
+      const dts = await apiFetch<Debt[]>("/debts");
+      setDebts(dts);
+      setNewDebtName("");
+      setNewDebtTotal("");
+      setNewDebtInstallment("");
+      setNewDebtInstallments("");
+      setNewDebtDueDay("");
+      setShowDebtForm(false);
+      showSuccess("Deuda agregada");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al crear deuda");
+    } finally {
+      setAddingDebt(false);
+    }
+  }
+
+  async function handleRegisterPayment(id: string) {
+    try {
+      await apiFetch(`/debts/${id}`, { method: "PUT", body: { registerPayment: true } });
+      const dts = await apiFetch<Debt[]>("/debts");
+      setDebts(dts);
+      showSuccess("Pago registrado");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al registrar pago");
+    }
+  }
+
+  async function handleUndoPayment(id: string) {
+    try {
+      await apiFetch(`/debts/${id}`, { method: "PUT", body: { undoPayment: true } });
+      const dts = await apiFetch<Debt[]>("/debts");
+      setDebts(dts);
+      showSuccess("Pago revertido");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al revertir pago");
+    }
+  }
+
+  async function handleDeleteDebt(id: string) {
+    try {
+      await apiFetch(`/debts/${id}`, { method: "DELETE" });
+      setDebts((prev) => prev.filter((d) => d.id !== id));
+      showSuccess("Deuda eliminada");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al eliminar");
+    } finally {
+      setConfirmDelete(null);
+    }
+  }
+
   async function handleLogout() {
     setLoggingOut(true);
     try {
@@ -403,6 +491,128 @@ export default function AjustesPage() {
               <button type="submit" disabled={addingFixed || !newFixedName.trim() || !newFixedAmount}
                 className="px-4 py-2 bg-brand text-white text-sm font-semibold rounded-lg hover:bg-brand-hover active:scale-[0.98] transition-all disabled:opacity-40">+</button>
             </form>
+          </div>
+        </div>
+
+        {/* Debts section - full width */}
+        <div className="md:col-span-2 mt-6">
+          <div id="tour-deudas" className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">📋 Deudas y cuotas</h2>
+                <p className="text-xs text-slate-500">Seguimiento de deudas con cuotas mensuales</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDebtForm(!showDebtForm)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-brand text-white hover:bg-brand-hover transition-all"
+              >
+                {showDebtForm ? "Cancelar" : "+ Agregar"}
+              </button>
+            </div>
+
+            {showDebtForm && (
+              <form onSubmit={handleAddDebt} className="mb-4 p-4 bg-slate-50 rounded-xl space-y-3">
+                <input
+                  type="text"
+                  value={newDebtName}
+                  onChange={(e) => setNewDebtName(e.target.value)}
+                  placeholder="Nombre (ej: Préstamo auto)"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none"
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Monto total</label>
+                    <input type="number" min="1" value={newDebtTotal} onChange={(e) => setNewDebtTotal(e.target.value)}
+                      placeholder="100000" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Monto por cuota</label>
+                    <input type="number" min="1" value={newDebtInstallment} onChange={(e) => setNewDebtInstallment(e.target.value)}
+                      placeholder="5000" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Total de cuotas</label>
+                    <input type="number" min="1" value={newDebtInstallments} onChange={(e) => setNewDebtInstallments(e.target.value)}
+                      placeholder="24" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Día de vencimiento</label>
+                    <input type="number" min="1" max="31" value={newDebtDueDay} onChange={(e) => setNewDebtDueDay(e.target.value)}
+                      placeholder="10" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none" />
+                  </div>
+                </div>
+                <button type="submit" disabled={addingDebt || !newDebtName.trim() || !newDebtTotal || !newDebtInstallment || !newDebtInstallments}
+                  className="w-full py-2.5 bg-brand text-white text-sm font-semibold rounded-xl hover:bg-brand-hover transition-all disabled:opacity-40">
+                  {addingDebt ? "Guardando..." : "Guardar deuda"}
+                </button>
+              </form>
+            )}
+
+            {debts.length === 0 && !showDebtForm ? (
+              <p className="text-sm text-slate-400 text-center py-4">No tenés deudas registradas</p>
+            ) : (
+              <div className="space-y-3">
+                {debts.map((debt) => {
+                  const progress = debt.totalInstallments > 0
+                    ? Math.round((debt.paidInstallments / debt.totalInstallments) * 100)
+                    : 0;
+                  const remaining = debt.totalInstallments - debt.paidInstallments;
+                  const isCompleted = debt.status === "completed";
+                  const todayDay = new Date().getDate();
+                  const isOverdue = !isCompleted && todayDay > debt.dueDay && debt.paidInstallments < debt.totalInstallments;
+
+                  return (
+                    <div key={debt.id} className={`p-4 rounded-xl border ${isCompleted ? "bg-green-50 border-income/20" : isOverdue ? "bg-red-50 border-expense/20" : "bg-white border-slate-100"}`}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-bold text-slate-900 truncate">{debt.name}</p>
+                            {isCompleted && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-income/20 text-income font-semibold">Pagada</span>}
+                            {isOverdue && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-expense/20 text-expense font-semibold">Vencida</span>}
+                          </div>
+                          <p className="text-xs text-slate-500">
+                            {fmt(debt.installmentAmount)}/cuota · Vence día {debt.dueDay} · {remaining > 0 ? `${remaining} cuota${remaining !== 1 ? "s" : ""} restante${remaining !== 1 ? "s" : ""}` : "Completada"}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setConfirmDelete({ type: "debt", id: debt.id, name: debt.name })}
+                          className="p-1 rounded-lg text-slate-300 hover:text-expense hover:bg-red-50 transition-colors shrink-0"
+                        >✕</button>
+                      </div>
+
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="flex-1 h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${isCompleted ? "bg-income" : "bg-brand"}`}
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-bold text-slate-600 shrink-0">{debt.paidInstallments}/{debt.totalInstallments}</span>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-slate-400">Total: {fmt(debt.totalAmount)} · Pagado: {fmt(debt.installmentAmount * debt.paidInstallments)}</p>
+                        <div className="flex gap-1.5">
+                          {debt.paidInstallments > 0 && (
+                            <button onClick={() => handleUndoPayment(debt.id)}
+                              className="px-2 py-1 text-[10px] font-semibold rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition-all">
+                              Deshacer
+                            </button>
+                          )}
+                          {!isCompleted && (
+                            <button onClick={() => handleRegisterPayment(debt.id)}
+                              className="px-2.5 py-1 text-[10px] font-semibold rounded-lg bg-income text-white hover:bg-emerald-700 transition-all">
+                              Registrar pago
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -599,11 +809,12 @@ export default function AjustesPage() {
 
       <ConfirmDialog
         open={!!confirmDelete}
-        title={confirmDelete?.type === "fixed" ? "Eliminar gasto fijo" : "Eliminar categoría"}
+        title={confirmDelete?.type === "fixed" ? "Eliminar gasto fijo" : confirmDelete?.type === "debt" ? "Eliminar deuda" : "Eliminar categoría"}
         message={`¿Eliminar "${confirmDelete?.name}"? Esta acción no se puede deshacer.`}
         onConfirm={() => {
           if (!confirmDelete) return;
           if (confirmDelete.type === "fixed") handleDeleteFixed(confirmDelete.id);
+          else if (confirmDelete.type === "debt") handleDeleteDebt(confirmDelete.id);
           else handleDeleteCategory(confirmDelete.id);
         }}
         onCancel={() => setConfirmDelete(null)}

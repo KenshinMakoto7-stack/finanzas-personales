@@ -45,6 +45,16 @@ interface FixedExpense {
   amount: number;
 }
 
+interface Debt {
+  id: string;
+  name: string;
+  installmentAmount: number;
+  totalInstallments: number;
+  paidInstallments: number;
+  dueDay: number;
+  status: "active" | "completed";
+}
+
 export default function HoyPage() {
   const { user, categories: cachedCats, categoriesLoaded, setCategories: setCachedCats } = useAuth();
   const today = new Date();
@@ -58,6 +68,7 @@ export default function HoyPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [settings, setSettings] = useState<Settings>({ monthlyIncome: 0, monthlySavings: 0 });
   const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -81,13 +92,13 @@ export default function HoyPage() {
     try {
       const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
       const needCats = !categoriesLoaded;
-      const promises: [Promise<Category[]> | null, Promise<Transaction[]>, Promise<Settings>, Promise<FixedExpense[]>] = [
-        needCats ? apiFetch<Category[]>("/categories") : null,
+      const [cats, txns, stngs, fixed, dts] = await Promise.all([
+        needCats ? apiFetch<Category[]>("/categories") : Promise.resolve(null),
         apiFetch<Transaction[]>(`/transactions?month=${currentMonth}&limit=200`),
         apiFetch<Settings>("/settings"),
         apiFetch<FixedExpense[]>("/fixed-expenses"),
-      ];
-      const [cats, txns, stngs, fixed] = await Promise.all(promises);
+        apiFetch<Debt[]>("/debts"),
+      ]);
       if (cats) {
         setCategories(cats);
         setCachedCats(cats);
@@ -95,6 +106,7 @@ export default function HoyPage() {
       setTransactions(txns);
       setSettings(stngs);
       setFixedExpenses(fixed);
+      setDebts(dts);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cargar datos");
@@ -216,13 +228,16 @@ export default function HoyPage() {
     .filter((t) => t.type === "INCOME")
     .reduce((s, t) => s + t.amount, 0);
 
-  // Disponible por día = (Ingresos - gastos fijos - gastos variables del mes - ahorro) / días restantes
+  // Disponible por día = (Ingresos - gastos fijos - cuotas activas - gastos variables - ahorro) / días restantes
   const totalFixed = fixedExpenses.reduce((s, f) => s + f.amount, 0);
+  const totalDebtInstallments = debts
+    .filter((d) => d.status === "active")
+    .reduce((s, d) => s + d.installmentAmount, 0);
   const { monthlyIncome, monthlySavings } = settings;
   const ingresoReal = monthlyIncome + totalIncome;
-  const disponibleTotal = ingresoReal - totalFixed - totalExpenses - monthlySavings;
+  const disponibleTotal = ingresoReal - totalFixed - totalDebtInstallments - totalExpenses - monthlySavings;
   const disponiblePorDia = daysRemaining > 0 ? Math.round(disponibleTotal / daysRemaining) : 0;
-  const baseDisponible = ingresoReal - totalFixed - monthlySavings;
+  const baseDisponible = ingresoReal - totalFixed - totalDebtInstallments - monthlySavings;
   const budgetUsedPercent = baseDisponible > 0
     ? Math.max(0, Math.min(100, (disponibleTotal / baseDisponible) * 100))
     : 100;

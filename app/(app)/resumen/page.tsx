@@ -33,6 +33,27 @@ interface Category {
   children?: Category[];
 }
 
+interface Settings {
+  monthlyIncome: number;
+  monthlySavings: number;
+}
+
+interface FixedExpense {
+  id: string;
+  name: string;
+  amount: number;
+}
+
+interface Debt {
+  id: string;
+  name: string;
+  installmentAmount: number;
+  totalInstallments: number;
+  paidInstallments: number;
+  dueDay: number;
+  status: "active" | "completed";
+}
+
 interface CategoryBreakdown {
   name: string;
   color: string;
@@ -49,6 +70,9 @@ export default function ResumenPage() {
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth());
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>(cachedCats);
+  const [settings, setSettings] = useState<Settings>({ monthlyIncome: 0, monthlySavings: 0 });
+  const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -58,15 +82,21 @@ export default function ResumenPage() {
     setLoading(true);
     try {
       const needCats = !categoriesLoaded;
-      const [txns, cats] = await Promise.all([
+      const [txns, cats, stngs, fixed, dts] = await Promise.all([
         apiFetch<Transaction[]>(`/transactions?month=${monthKey}`),
         needCats ? apiFetch<Category[]>("/categories") : Promise.resolve(null),
+        apiFetch<Settings>("/settings"),
+        apiFetch<FixedExpense[]>("/fixed-expenses"),
+        apiFetch<Debt[]>("/debts"),
       ]);
       setTransactions(txns);
       if (cats) {
         setCategories(cats);
         setCachedCats(cats);
       }
+      setSettings(stngs);
+      setFixedExpenses(fixed);
+      setDebts(dts);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cargar");
@@ -104,9 +134,17 @@ export default function ResumenPage() {
   // Compute totals
   const expenses = transactions.filter((t) => t.type === "EXPENSE");
   const totalExpenses = expenses.reduce((s, t) => s + t.amount, 0);
-  const totalIncome = transactions
+  const registeredIncome = transactions
     .filter((t) => t.type === "INCOME")
     .reduce((s, t) => s + t.amount, 0);
+  const totalFixed = fixedExpenses.reduce((s, f) => s + f.amount, 0);
+  const totalDebtInstallments = debts
+    .filter((d) => d.status === "active")
+    .reduce((s, d) => s + d.installmentAmount, 0);
+  const { monthlyIncome, monthlySavings } = settings;
+  const totalIncome = monthlyIncome + registeredIncome;
+  const totalGastos = totalFixed + totalDebtInstallments + totalExpenses;
+  const balance = totalIncome - totalGastos - monthlySavings;
 
   // Build category ID → parent name+color map
   const catMap = new Map<string, { name: string; color: string }>();
@@ -183,21 +221,41 @@ export default function ResumenPage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-                  <p className="text-xs font-semibold text-slate-500 mb-1">Total ingresos</p>
+                  <p className="text-xs font-semibold text-slate-500 mb-1">Ingresos totales</p>
                   <p className="text-2xl font-bold text-income">{fmt(totalIncome)}</p>
+                  {monthlyIncome > 0 && registeredIncome > 0 && (
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Sueldo {fmt(monthlyIncome)} + otros {fmt(registeredIncome)}
+                    </p>
+                  )}
                 </div>
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-                  <p className="text-xs font-semibold text-slate-500 mb-1">Total gastos</p>
-                  <p className="text-2xl font-bold text-expense">{fmt(totalExpenses)}</p>
+                  <p className="text-xs font-semibold text-slate-500 mb-1">Gastos totales</p>
+                  <p className="text-2xl font-bold text-expense">{fmt(totalGastos)}</p>
+                  {(totalFixed > 0 || totalDebtInstallments > 0) && totalExpenses > 0 && (
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Fijos {fmt(totalFixed + totalDebtInstallments)} + variables {fmt(totalExpenses)}
+                    </p>
+                  )}
                 </div>
               </div>
 
               {/* Balance */}
               <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-                <p className="text-xs font-semibold text-slate-500 mb-1">Balance del mes</p>
-                <p className={`text-2xl font-bold ${totalIncome - totalExpenses >= 0 ? "text-income" : "text-expense"}`}>
-                  {totalIncome - totalExpenses < 0 ? "-" : "+"}{fmt(Math.abs(totalIncome - totalExpenses))}
-                </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 mb-1">Balance real del mes</p>
+                    <p className={`text-2xl font-bold ${balance >= 0 ? "text-income" : "text-expense"}`}>
+                      {balance < 0 ? "-" : "+"}{fmt(Math.abs(balance))}
+                    </p>
+                  </div>
+                  {monthlySavings > 0 && (
+                    <div className="text-right">
+                      <p className="text-[10px] text-slate-400">Ahorro reservado</p>
+                      <p className="text-sm font-bold text-brand">{fmt(monthlySavings)}</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -257,6 +315,34 @@ export default function ResumenPage() {
               )}
             </div>
           </div>
+
+          {/* Active debts summary */}
+          {debts.filter((d) => d.status === "active").length > 0 && (
+            <div className="mt-6">
+              <h2 className="text-lg font-bold text-slate-900 mb-3">Deudas activas</h2>
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                {debts.filter((d) => d.status === "active").map((debt, i, arr) => {
+                  const progress = Math.round((debt.paidInstallments / debt.totalInstallments) * 100);
+                  const remaining = debt.totalInstallments - debt.paidInstallments;
+                  return (
+                    <div key={debt.id} className={`px-4 py-3 ${i < arr.length - 1 ? "border-b border-slate-50" : ""}`}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-sm font-semibold text-slate-900">{debt.name}</p>
+                        <p className="text-sm font-bold text-expense">{fmt(debt.installmentAmount)}/mes</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-brand rounded-full transition-all" style={{ width: `${progress}%` }} />
+                        </div>
+                        <span className="text-[10px] font-semibold text-slate-500">{debt.paidInstallments}/{debt.totalInstallments} · {remaining} restante{remaining !== 1 ? "s" : ""}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-slate-400 mt-2 text-right">Total cuotas mensuales: <span className="font-bold text-expense">{fmt(totalDebtInstallments)}</span></p>
+            </div>
+          )}
 
           {/* Top expenses */}
           {expenses.length > 0 && (
