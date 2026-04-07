@@ -7,6 +7,7 @@ import { useAuth } from "@/store/auth";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import PageTour from "@/components/PageTour";
 
 interface FixedExpense {
   id: string;
@@ -310,7 +311,7 @@ export default function AjustesPage() {
       <div className="md:grid md:grid-cols-2 md:gap-8">
         {/* Left column: Income/Savings + Summary */}
         <div className="space-y-6">
-          <form onSubmit={handleSaveSettings} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <form id="tour-ingreso" onSubmit={handleSaveSettings} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
             <h2 className="text-lg font-bold text-slate-900 mb-4">💰 Ingreso y Ahorro</h2>
             <div className="space-y-4">
               <div>
@@ -354,7 +355,7 @@ export default function AjustesPage() {
           )}
 
           {/* Fixed expenses */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div id="tour-fijos" className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
             <h2 className="text-lg font-bold text-slate-900 mb-1">🔄 Gastos fijos</h2>
             <p className="text-xs text-slate-500 mb-4">Pagos que se repiten cada mes</p>
             {fixedExpenses.length > 0 && (
@@ -407,7 +408,7 @@ export default function AjustesPage() {
 
         {/* Right column: Categories */}
         <div className="mt-6 md:mt-0 space-y-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div id="tour-cats" className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
             <h2 className="text-lg font-bold text-slate-900 mb-4">📁 Categorías</h2>
 
             {/* Expense categories */}
@@ -615,6 +616,30 @@ export default function AjustesPage() {
           {loggingOut ? "Cerrando sesión..." : "Cerrar Sesión"}
         </button>
       </div>
+
+      <PageTour
+        tourId="ajustes"
+        steps={[
+          {
+            target: "#tour-ingreso",
+            title: "Ingreso y ahorro",
+            content: "Configurá tu ingreso mensual y cuánto querés ahorrar por mes.",
+            placement: "bottom",
+          },
+          {
+            target: "#tour-fijos",
+            title: "Gastos fijos",
+            content: "Agregá tus gastos que se repiten cada mes (alquiler, servicios, etc.).",
+            placement: "top",
+          },
+          {
+            target: "#tour-cats",
+            title: "Categorías",
+            content: "Creá y personalizá tus categorías de gasto e ingreso.",
+            placement: "left",
+          },
+        ]}
+      />
     </div>
   );
 }

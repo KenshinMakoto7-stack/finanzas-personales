@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/store/auth";
 import { apiFetch } from "@/lib/api";
+import PageTour from "@/components/PageTour";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -145,7 +146,7 @@ export default function ResumenPage() {
       {/* Header with month nav */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-900 md:text-3xl">Resumen</h1>
-        <div className="flex items-center gap-3">
+        <div id="tour-mes-nav" className="flex items-center gap-3">
           <button
             onClick={prevMonth}
             className="w-9 h-9 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 active:scale-95 transition-all"
@@ -201,7 +202,7 @@ export default function ResumenPage() {
             </div>
 
             {/* Visual bar chart */}
-            <div className="mt-4 md:mt-0">
+            <div id="tour-desglose" className="mt-4 md:mt-0">
               {breakdown.length === 0 ? (
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 text-center">
                   <p className="text-slate-400 text-sm">
@@ -259,7 +260,7 @@ export default function ResumenPage() {
 
           {/* Top expenses */}
           {expenses.length > 0 && (
-            <div className="mt-6 mb-8">
+            <div id="tour-top-gastos" className="mt-6 mb-8">
               <h2 className="text-lg font-bold text-slate-900 mb-3">
                 Gastos más grandes
               </h2>
@@ -295,6 +296,30 @@ export default function ResumenPage() {
           )}
         </>
       )}
+
+      <PageTour
+        tourId="resumen"
+        steps={[
+          {
+            target: "#tour-mes-nav",
+            title: "Navegación por mes",
+            content: "Usá las flechas para ver el resumen de meses anteriores.",
+            placement: "bottom",
+          },
+          {
+            target: "#tour-desglose",
+            title: "Distribución de gastos",
+            content: "Acá ves en qué categorías se fue tu dinero, con porcentajes.",
+            placement: "left",
+          },
+          {
+            target: "#tour-top-gastos",
+            title: "Gastos más grandes",
+            content: "Tus 5 gastos más grandes del mes para que identifiques dónde recortar.",
+            placement: "top",
+          },
+        ]}
+      />
     </div>
   );
 }

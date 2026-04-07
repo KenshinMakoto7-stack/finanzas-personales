@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/store/auth";
 import { apiFetch } from "@/lib/api";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import PageTour from "@/components/PageTour";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -239,7 +240,7 @@ export default function HoyPage() {
         {/* Left column: Budget overview */}
         <div className="space-y-4">
           {/* Disponible por día */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div id="tour-disponible" className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
             <p className="text-sm font-semibold text-slate-500 mb-1">
               Disponible por día
             </p>
@@ -294,6 +295,7 @@ export default function HoyPage() {
         {/* Right column: Quick expense form */}
         <div className="mt-4 md:mt-0">
           <form
+            id="tour-formulario"
             onSubmit={handleSubmit}
             className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6"
           >
@@ -339,7 +341,7 @@ export default function HoyPage() {
             </div>
 
             {/* Category grid */}
-            <div className="mb-3">
+            <div id="tour-categorias" className="mb-3">
               <p className="text-xs font-semibold text-slate-500 mb-2">
                 Categoría
               </p>
@@ -471,7 +473,7 @@ export default function HoyPage() {
       />
 
       {/* Recent transactions */}
-      <div className="mt-6 mb-8">
+      <div id="tour-transacciones" className="mt-6 mb-8">
         <h2 className="text-lg font-bold text-slate-900 mb-3">
           Últimas transacciones
         </h2>
@@ -525,6 +527,36 @@ export default function HoyPage() {
           </div>
         )}
       </div>
+
+      <PageTour
+        tourId="hoy"
+        steps={[
+          {
+            target: "#tour-disponible",
+            title: "Tu presupuesto diario",
+            content: "Acá ves cuánto podés gastar hoy sin pasarte del presupuesto mensual.",
+            placement: "bottom",
+          },
+          {
+            target: "#tour-formulario",
+            title: "Registro rápido",
+            content: "Registrá un gasto o ingreso en segundos. Elegí el tipo, monto y categoría.",
+            placement: "top",
+          },
+          {
+            target: "#tour-categorias",
+            title: "Categorías",
+            content: "Elegí la categoría para clasificar tu movimiento. Podés crear nuevas con + Nueva.",
+            placement: "top",
+          },
+          {
+            target: "#tour-transacciones",
+            title: "Últimas transacciones",
+            content: "Tus movimientos más recientes del mes aparecen acá.",
+            placement: "top",
+          },
+        ]}
+      />
     </div>
   );
 }

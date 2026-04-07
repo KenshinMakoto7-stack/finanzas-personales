@@ -8,11 +8,13 @@
     "start": "next start"
   },
   "dependencies": {
+    "@floating-ui/react-dom": "^2.1.8",
     "firebase": "^12.11.0",
     "firebase-admin": "^13.7.0",
     "next": "^16.2.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-tourlight": "^0.1.1",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

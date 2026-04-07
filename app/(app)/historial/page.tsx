@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/store/auth";
 import { apiFetch } from "@/lib/api";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import PageTour from "@/components/PageTour";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -117,7 +118,7 @@ export default function HistorialPage() {
       {/* Header with month nav */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-900 md:text-3xl">Historial</h1>
-        <div className="flex items-center gap-3">
+        <div id="tour-hist-nav" className="flex items-center gap-3">
           <button
             onClick={prevMonth}
             className="w-9 h-9 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 active:scale-95 transition-all"
@@ -152,7 +153,7 @@ export default function HistorialPage() {
       />
 
       {/* Summary bar */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div id="tour-hist-lista" className="grid grid-cols-3 gap-3 mb-6">
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
           <p className="text-xs font-semibold text-slate-500 mb-1">Ingresos</p>
           <p className="text-lg font-bold text-income">{fmt(totalIncome)}</p>
@@ -244,6 +245,24 @@ export default function HistorialPage() {
           })}
         </div>
       )}
+
+      <PageTour
+        tourId="historial"
+        steps={[
+          {
+            target: "#tour-hist-nav",
+            title: "Navegación por mes",
+            content: "Cambiá de mes para ver transacciones anteriores.",
+            placement: "bottom",
+          },
+          {
+            target: "#tour-hist-lista",
+            title: "Resumen y detalle",
+            content: "Acá ves el resumen del mes y todas las transacciones agrupadas por día.",
+            placement: "bottom",
+          },
+        ]}
+      />
     </div>
   );
 }
