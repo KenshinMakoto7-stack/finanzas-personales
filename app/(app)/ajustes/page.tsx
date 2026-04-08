@@ -33,6 +33,8 @@ interface Debt {
   paidInstallments: number;
   dueDay: number;
   status: "active" | "completed";
+  lastPaymentDate: string | null;
+  categoryId?: string;
 }
 
 function fmt(n: number): string {
@@ -78,11 +80,14 @@ export default function AjustesPage() {
   const [debts, setDebts] = useState<Debt[]>([]);
   const [newDebtName, setNewDebtName] = useState("");
   const [newDebtTotal, setNewDebtTotal] = useState("");
-  const [newDebtInstallment, setNewDebtInstallment] = useState("");
   const [newDebtInstallments, setNewDebtInstallments] = useState("");
   const [newDebtDueDay, setNewDebtDueDay] = useState("");
   const [addingDebt, setAddingDebt] = useState(false);
   const [showDebtForm, setShowDebtForm] = useState(false);
+
+  const calculatedInstallment = newDebtTotal && newDebtInstallments
+    ? Math.ceil(Number(newDebtTotal) / Number(newDebtInstallments))
+    : 0;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -112,6 +117,14 @@ export default function AjustesPage() {
 
   useEffect(() => {
     if (user) loadData();
+  }, [user, loadData]);
+
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible" && user) loadData();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [user, loadData]);
 
   function showSuccess(msg: string) {
@@ -169,12 +182,12 @@ export default function AjustesPage() {
   async function handleSaveFixed(id: string) {
     if (!editFixedName.trim() || !editFixedAmount) return;
     try {
-      await apiFetch(`/fixed-expenses/${id}`, {
+      const updated = await apiFetch<FixedExpense>(`/fixed-expenses/${id}`, {
         method: "PUT",
         body: { name: editFixedName.trim(), amount: Number(editFixedAmount) },
       });
       setFixedExpenses((prev) =>
-        prev.map((f) => f.id === id ? { ...f, name: editFixedName.trim(), amount: Math.round(Math.abs(Number(editFixedAmount))) } : f)
+        prev.map((f) => (f.id === id ? updated : f))
       );
       setEditingFixed(null);
       showSuccess("Gasto fijo actualizado");
@@ -280,7 +293,7 @@ export default function AjustesPage() {
 
   async function handleAddDebt(e: React.FormEvent) {
     e.preventDefault();
-    if (!newDebtName.trim() || !newDebtTotal || !newDebtInstallment || !newDebtInstallments) return;
+    if (!newDebtName.trim() || !newDebtTotal || !newDebtInstallments || !calculatedInstallment) return;
     setAddingDebt(true);
     setError("");
     try {
@@ -289,7 +302,7 @@ export default function AjustesPage() {
         body: {
           name: newDebtName.trim(),
           totalAmount: Number(newDebtTotal),
-          installmentAmount: Number(newDebtInstallment),
+          installmentAmount: calculatedInstallment,
           totalInstallments: Number(newDebtInstallments),
           dueDay: Number(newDebtDueDay) || 1,
         },
@@ -298,10 +311,10 @@ export default function AjustesPage() {
       setDebts(dts);
       setNewDebtName("");
       setNewDebtTotal("");
-      setNewDebtInstallment("");
       setNewDebtInstallments("");
       setNewDebtDueDay("");
       setShowDebtForm(false);
+      clearCategories();
       showSuccess("Deuda agregada");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al crear deuda");
@@ -336,6 +349,7 @@ export default function AjustesPage() {
     try {
       await apiFetch(`/debts/${id}`, { method: "DELETE" });
       setDebts((prev) => prev.filter((d) => d.id !== id));
+      clearCategories();
       showSuccess("Deuda eliminada");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al eliminar");
@@ -520,19 +534,14 @@ export default function AjustesPage() {
                   placeholder="Nombre (ej: Préstamo auto)"
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none"
                 />
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-500 mb-1">Monto total</label>
                     <input type="number" min="1" value={newDebtTotal} onChange={(e) => setNewDebtTotal(e.target.value)}
                       placeholder="100000" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Monto por cuota</label>
-                    <input type="number" min="1" value={newDebtInstallment} onChange={(e) => setNewDebtInstallment(e.target.value)}
-                      placeholder="5000" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Total de cuotas</label>
+                    <label className="block text-[10px] font-semibold text-slate-500 mb-1">Cantidad de cuotas</label>
                     <input type="number" min="1" value={newDebtInstallments} onChange={(e) => setNewDebtInstallments(e.target.value)}
                       placeholder="24" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none" />
                   </div>
@@ -542,7 +551,13 @@ export default function AjustesPage() {
                       placeholder="10" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-brand focus:outline-none" />
                   </div>
                 </div>
-                <button type="submit" disabled={addingDebt || !newDebtName.trim() || !newDebtTotal || !newDebtInstallment || !newDebtInstallments}
+                {calculatedInstallment > 0 && (
+                  <div className="bg-brand/5 border border-brand/20 rounded-lg px-3 py-2 text-sm">
+                    <span className="text-slate-600">Cuota mensual: </span>
+                    <span className="font-bold text-brand">{fmt(calculatedInstallment)}</span>
+                  </div>
+                )}
+                <button type="submit" disabled={addingDebt || !newDebtName.trim() || !newDebtTotal || !newDebtInstallments || !calculatedInstallment}
                   className="w-full py-2.5 bg-brand text-white text-sm font-semibold rounded-xl hover:bg-brand-hover transition-all disabled:opacity-40">
                   {addingDebt ? "Guardando..." : "Guardar deuda"}
                 </button>
@@ -560,7 +575,9 @@ export default function AjustesPage() {
                   const remaining = debt.totalInstallments - debt.paidInstallments;
                   const isCompleted = debt.status === "completed";
                   const todayDay = new Date().getDate();
-                  const isOverdue = !isCompleted && todayDay > debt.dueDay && debt.paidInstallments < debt.totalInstallments;
+                  const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+                  const paidThisMonth = debt.lastPaymentDate?.startsWith(currentMonth);
+                  const isOverdue = !isCompleted && todayDay > debt.dueDay && !paidThisMonth;
 
                   return (
                     <div key={debt.id} className={`p-4 rounded-xl border ${isCompleted ? "bg-green-50 border-income/20" : isOverdue ? "bg-red-50 border-expense/20" : "bg-white border-slate-100"}`}>
@@ -829,25 +846,31 @@ export default function AjustesPage() {
       </div>
 
       <PageTour
-        tourId="ajustes"
+        tourId="ajustes-v3"
         steps={[
           {
             target: "#tour-ingreso",
             title: "Ingreso y ahorro",
             content: "Configurá tu ingreso mensual y cuánto querés ahorrar por mes.",
-            placement: "bottom",
+            placement: "auto",
           },
           {
             target: "#tour-fijos",
             title: "Gastos fijos",
             content: "Agregá tus gastos que se repiten cada mes (alquiler, servicios, etc.).",
-            placement: "top",
+            placement: "auto",
+          },
+          {
+            target: "#tour-deudas",
+            title: "Deudas y cuotas",
+            content: "Registrá tus deudas con cuotas mensuales. Al registrar un pago, se crea automáticamente una transacción. También podés pagar desde la página principal eligiendo la categoría Deudas.",
+            placement: "auto",
           },
           {
             target: "#tour-cats",
             title: "Categorías",
-            content: "Creá y personalizá tus categorías de gasto e ingreso.",
-            placement: "bottom",
+            content: "Creá y personalizá tus categorías de gasto e ingreso. Las deudas generan subcategorías automáticamente.",
+            placement: "auto",
           },
         ]}
       />

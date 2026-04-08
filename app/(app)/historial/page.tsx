@@ -247,19 +247,19 @@ export default function HistorialPage() {
       )}
 
       <PageTour
-        tourId="historial"
+        tourId="historial-v3"
         steps={[
           {
             target: "#tour-hist-nav",
             title: "Navegación por mes",
             content: "Cambiá de mes para ver transacciones anteriores.",
-            placement: "bottom",
+            placement: "auto",
           },
           {
             target: "#tour-hist-lista",
             title: "Resumen y detalle",
             content: "Acá ves el resumen del mes y todas las transacciones agrupadas por día.",
-            placement: "bottom",
+            placement: "auto",
           },
         ]}
       />

@@ -5,6 +5,7 @@ import { useAuth } from "@/store/auth";
 import { apiFetch } from "@/lib/api";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import PageTour from "@/components/PageTour";
+import FirstSteps from "@/components/FirstSteps";
 
 const MONTH_NAMES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -45,30 +46,30 @@ interface FixedExpense {
   amount: number;
 }
 
-interface Debt {
-  id: string;
-  name: string;
-  installmentAmount: number;
-  totalInstallments: number;
-  paidInstallments: number;
-  dueDay: number;
-  status: "active" | "completed";
-}
-
 export default function HoyPage() {
-  const { user, categories: cachedCats, categoriesLoaded, setCategories: setCachedCats } = useAuth();
-  const today = new Date();
-  const month = MONTH_NAMES[today.getMonth()];
-  const year = today.getFullYear();
-  const dayOfMonth = today.getDate();
-  const daysInMonth = new Date(year, today.getMonth() + 1, 0).getDate();
-  const daysRemaining = daysInMonth - dayOfMonth + 1;
+  const { user, categories: cachedCats, isCategoriesStale, setCategories: setCachedCats } = useAuth();
+
+  const [dateInfo] = useState(() => {
+    const t = new Date();
+    const yr = t.getFullYear();
+    const mi = t.getMonth();
+    const dom = t.getDate();
+    const dim = new Date(yr, mi + 1, 0).getDate();
+    return {
+      month: MONTH_NAMES[mi],
+      year: yr,
+      dayOfMonth: dom,
+      daysInMonth: dim,
+      daysRemaining: dim - dom + 1,
+      monthKey: `${yr}-${String(mi + 1).padStart(2, "0")}`,
+      localDate: t.toLocaleDateString("sv-SE"),
+    };
+  });
 
   const [categories, setCategories] = useState<Category[]>(cachedCats);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [settings, setSettings] = useState<Settings>({ monthlyIncome: 0, monthlySavings: 0 });
   const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>([]);
-  const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -87,17 +88,20 @@ export default function HoyPage() {
   const [newCatParentId, setNewCatParentId] = useState<string | null>(null);
   const [creatingCat, setCreatingCat] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [firstStepsDone, setFirstStepsDone] = useState(true);
+
+  useEffect(() => {
+    try { setFirstStepsDone(!!localStorage.getItem("firstSteps_done")); } catch {}
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
-      const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
-      const needCats = !categoriesLoaded;
-      const [cats, txns, stngs, fixed, dts] = await Promise.all([
+      const needCats = isCategoriesStale();
+      const [cats, txns, stngs, fixed] = await Promise.all([
         needCats ? apiFetch<Category[]>("/categories") : Promise.resolve(null),
-        apiFetch<Transaction[]>(`/transactions?month=${currentMonth}&limit=200`),
+        apiFetch<Transaction[]>(`/transactions?month=${dateInfo.monthKey}&limit=200`),
         apiFetch<Settings>("/settings"),
         apiFetch<FixedExpense[]>("/fixed-expenses"),
-        apiFetch<Debt[]>("/debts").catch(() => [] as Debt[]),
       ]);
       if (cats) {
         setCategories(cats);
@@ -106,17 +110,24 @@ export default function HoyPage() {
       setTransactions(txns);
       setSettings(stngs);
       setFixedExpenses(fixed);
-      setDebts(dts);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al cargar datos");
     } finally {
       setLoading(false);
     }
-  }, [categoriesLoaded, setCachedCats]);
+  }, [isCategoriesStale, setCachedCats, dateInfo.monthKey]);
 
   useEffect(() => {
     if (user) loadData();
+  }, [user, loadData]);
+
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible" && user) loadData();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [user, loadData]);
 
   const filteredCategories = categories.filter((c) => c.type === txType);
@@ -125,29 +136,58 @@ export default function HoyPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!amount || !selectedCategory) return;
+    if (!amount || !selectedCategory || submitting) return;
 
     setSubmitting(true);
+    setError("");
+
+    const tempId = `temp-${Date.now()}`;
+    const parsedAmount = Math.round(Math.abs(Number(amount)));
+    const localDate = new Date().toLocaleDateString("sv-SE");
+    const optimisticTx: Transaction = {
+      id: tempId,
+      amount: parsedAmount,
+      type: txType,
+      categoryName: selectedCategory.name,
+      note,
+      date: localDate,
+      createdAt: new Date().toISOString(),
+    };
+
+    const snapshot = [...transactions];
+    const savedBody = {
+      amount: parsedAmount,
+      type: txType,
+      categoryId: selectedCategory.id,
+      categoryName: selectedCategory.name,
+      note,
+      date: localDate,
+    };
+
+    setTransactions((prev) => [optimisticTx, ...prev]);
+    setAmount("");
+    setSelectedParent(null);
+    setSelectedChild(null);
+    setNote("");
+    setSuccess(txType === "EXPENSE" ? "Gasto registrado" : "Ingreso registrado");
+    setTimeout(() => setSuccess(""), 2500);
+
     try {
-      const newTx = await apiFetch<Transaction>("/transactions", {
+      const serverTx = await apiFetch<Transaction>("/transactions", {
         method: "POST",
-        body: {
-          amount: Number(amount),
-          type: txType,
-          categoryId: selectedCategory.id,
-          categoryName: selectedCategory.name,
-          note,
-        },
+        body: savedBody,
       });
-      setTransactions((prev) => [newTx, ...prev]);
-      setAmount("");
-      setSelectedParent(null);
-      setSelectedChild(null);
-      setNote("");
-      setSuccess(txType === "EXPENSE" ? "Gasto registrado" : "Ingreso registrado");
-      setTimeout(() => setSuccess(""), 2500);
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === tempId ? serverTx : t))
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al registrar");
+      setTransactions(snapshot);
+      setSuccess("");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Error al registrar — el gasto NO se guardó"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -200,13 +240,19 @@ export default function HoyPage() {
   }
 
   async function handleDelete(id: string) {
+    const snapshot = [...transactions];
+    setTransactions((prev) => prev.filter((t) => t.id !== id));
+    setDeleteId(null);
+
     try {
       await apiFetch(`/transactions/${id}`, { method: "DELETE" });
-      setTransactions((prev) => prev.filter((t) => t.id !== id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al eliminar");
-    } finally {
-      setDeleteId(null);
+      setTransactions(snapshot);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Error al eliminar — se restauró la transacción"
+      );
     }
   }
 
@@ -228,16 +274,12 @@ export default function HoyPage() {
     .filter((t) => t.type === "INCOME")
     .reduce((s, t) => s + t.amount, 0);
 
-  // Disponible por día = (Ingresos - gastos fijos - cuotas activas - gastos variables - ahorro) / días restantes
   const totalFixed = fixedExpenses.reduce((s, f) => s + f.amount, 0);
-  const totalDebtInstallments = debts
-    .filter((d) => d.status === "active")
-    .reduce((s, d) => s + d.installmentAmount, 0);
   const { monthlyIncome, monthlySavings } = settings;
   const ingresoReal = monthlyIncome + totalIncome;
-  const disponibleTotal = ingresoReal - totalFixed - totalDebtInstallments - totalExpenses - monthlySavings;
-  const disponiblePorDia = daysRemaining > 0 ? Math.round(disponibleTotal / daysRemaining) : 0;
-  const baseDisponible = ingresoReal - totalFixed - totalDebtInstallments - monthlySavings;
+  const disponibleTotal = ingresoReal - totalFixed - totalExpenses - monthlySavings;
+  const disponiblePorDia = dateInfo.daysRemaining > 0 ? Math.round(disponibleTotal / dateInfo.daysRemaining) : 0;
+  const baseDisponible = ingresoReal - totalFixed - monthlySavings;
   const budgetUsedPercent = baseDisponible > 0
     ? Math.max(0, Math.min(100, (disponibleTotal / baseDisponible) * 100))
     : 100;
@@ -256,10 +298,10 @@ export default function HoyPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 md:text-3xl">
-            {month} {year}
+            {dateInfo.month} {dateInfo.year}
           </h1>
           <p className="text-sm text-slate-500">
-            Día {dayOfMonth} — {daysRemaining} días restantes
+            Día {dateInfo.dayOfMonth} — {dateInfo.daysRemaining} días restantes
           </p>
         </div>
       </div>
@@ -270,6 +312,14 @@ export default function HoyPage() {
           {error}
         </div>
       )}
+
+      {/* First Steps onboarding */}
+      <FirstSteps
+        hasIncome={settings.monthlyIncome > 0}
+        hasFixedExpenses={fixedExpenses.length > 0}
+        hasTransactions={transactions.length > 0}
+        onComplete={() => setFirstStepsDone(true)}
+      />
 
       {/* Desktop: two columns / Mobile: stacked */}
       <div className="md:grid md:grid-cols-2 md:gap-8">
@@ -336,7 +386,7 @@ export default function HoyPage() {
             className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6"
           >
             {/* Type toggle */}
-            <div className="flex rounded-xl bg-slate-100 p-1 mb-5">
+            <div id="tour-tipo" className="flex rounded-xl bg-slate-100 p-1 mb-5">
               <button
                 type="button"
                 onClick={() => { setTxType("EXPENSE"); setSelectedParent(null); setSelectedChild(null); }}
@@ -578,35 +628,37 @@ export default function HoyPage() {
         )}
       </div>
 
-      <PageTour
-        tourId="hoy"
-        steps={[
-          {
-            target: "#tour-disponible",
-            title: "Tu presupuesto diario",
-            content: "Acá ves cuánto podés gastar hoy sin pasarte del presupuesto mensual.",
-            placement: "bottom",
-          },
-          {
-            target: "#tour-formulario",
-            title: "Registro rápido",
-            content: "Registrá un gasto o ingreso en segundos. Elegí el tipo, monto y categoría.",
-            placement: "bottom",
-          },
-          {
-            target: "#tour-categorias",
-            title: "Categorías",
-            content: "Elegí la categoría para clasificar tu movimiento. Podés crear nuevas con + Nueva.",
-            placement: "bottom",
-          },
-          {
-            target: "#tour-transacciones",
-            title: "Últimas transacciones",
-            content: "Tus movimientos más recientes del mes aparecen acá.",
-            placement: "top",
-          },
-        ]}
-      />
+      {firstStepsDone && (
+        <PageTour
+          tourId="hoy-v3"
+          steps={[
+            {
+              target: "#tour-disponible",
+              title: "Tu presupuesto diario",
+              content: "Acá ves cuánto podés gastar hoy sin pasarte. Descuenta tu sueldo, gastos fijos y ahorro automáticamente.",
+              placement: "auto",
+            },
+            {
+              target: "#tour-tipo",
+              title: "Registro rápido",
+              content: "Registrá un gasto o ingreso en segundos. Elegí el tipo, monto y categoría.",
+              placement: "auto",
+            },
+            {
+              target: "#tour-categorias",
+              title: "Categorías y deudas",
+              content: "Elegí la categoría para clasificar tu movimiento. En \"Deudas\" encontrás tus cuotas — al registrar un gasto ahí, se actualiza el progreso automáticamente.",
+              placement: "auto",
+            },
+            {
+              target: "#tour-transacciones",
+              title: "Últimas transacciones",
+              content: "Todos tus movimientos del mes, incluyendo pagos de deudas.",
+              placement: "auto",
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }

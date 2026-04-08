@@ -65,6 +65,18 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString();
+    const serverDate = now.slice(0, 10);
+
+    const clientDate =
+      typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date)
+        ? body.date
+        : serverDate;
+
+    const dateMs = new Date(clientDate + "T12:00:00Z").getTime();
+    const twoDays = 2 * 24 * 60 * 60 * 1000;
+    const safeDate =
+      Math.abs(dateMs - Date.now()) < twoDays ? clientDate : serverDate;
+
     const doc = {
       userId,
       amount: Math.round(Math.abs(Number(amount))),
@@ -72,12 +84,38 @@ export async function POST(req: NextRequest) {
       categoryId,
       categoryName,
       note: note || "",
-      date: now.slice(0, 10),
+      date: safeDate,
       createdAt: now,
       appVersion: "2.0",
     };
 
     const ref = await db.collection("transactions").add(doc);
+
+    if (type === "EXPENSE" && categoryId) {
+      try {
+        const catDoc = await db.collection("categories").doc(categoryId).get();
+        const catData = catDoc.exists ? catDoc.data() : null;
+        if (catData?.debtId) {
+          const debtRef = db.collection("debts").doc(catData.debtId);
+          const debtDoc = await debtRef.get();
+          if (debtDoc.exists && debtDoc.data()?.userId === userId && debtDoc.data()?.status === "active") {
+            const debtData = debtDoc.data()!;
+            const newPaid = (debtData.paidInstallments || 0) + 1;
+            const debtUpdates: Record<string, unknown> = {
+              paidInstallments: newPaid,
+              lastPaymentDate: safeDate,
+              updatedAt: now,
+            };
+            if (newPaid >= (debtData.totalInstallments || 1)) {
+              debtUpdates.status = "completed";
+            }
+            await debtRef.update(debtUpdates);
+          }
+        }
+      } catch {
+        // Non-blocking: debt sync failure shouldn't prevent transaction creation
+      }
+    }
 
     return NextResponse.json({ id: ref.id, ...doc }, { status: 201 });
   });

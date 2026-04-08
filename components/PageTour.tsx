@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { SpotlightProvider, SpotlightTour, useSpotlight } from "react-tourlight";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { SpotlightProvider, SpotlightTour, useSpotlight, type TourState } from "react-tourlight";
 import "react-tourlight/styles.css";
 
 interface TourStep {
   target: string;
   title: string;
   content: string;
-  placement?: "top" | "bottom" | "left" | "right";
+  placement?: "top" | "bottom" | "left" | "right" | "auto";
   spotlightPadding?: number;
 }
 
@@ -23,37 +23,36 @@ function storageKey(tourId: string) {
 
 function TourAutoStart({ tourId, targets }: { tourId: string; targets: string[] }) {
   const { start } = useSpotlight();
-
-  const tryStart = useCallback(() => {
-    const allExist = targets.every((sel) => document.querySelector(sel));
-    if (allExist) {
-      requestAnimationFrame(() => {
-        start(tourId);
-      });
-      return true;
-    }
-    return false;
-  }, [tourId, targets, start]);
+  const startedRef = useRef(false);
 
   useEffect(() => {
-    if (tryStart()) return;
+    if (startedRef.current) return;
 
     let attempts = 0;
     const interval = setInterval(() => {
       attempts++;
-      if (tryStart() || attempts > 20) {
+      if (attempts > 30) {
         clearInterval(interval);
+        return;
       }
-    }, 300);
+      const allExist = targets.every((sel) => document.querySelector(sel));
+      if (allExist && !startedRef.current) {
+        startedRef.current = true;
+        clearInterval(interval);
+        requestAnimationFrame(() => start(tourId));
+      }
+    }, 400);
 
     return () => clearInterval(interval);
-  }, [tryStart]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return null;
 }
 
 export default function PageTour({ tourId, steps }: PageTourProps) {
   const [show, setShow] = useState(false);
+  const completedRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -64,27 +63,47 @@ export default function PageTour({ tourId, steps }: PageTourProps) {
     }
   }, [tourId]);
 
-  function handleComplete() {
+  const markDone = useCallback(() => {
+    if (completedRef.current) return;
+    completedRef.current = true;
     try {
       localStorage.setItem(storageKey(tourId), "true");
     } catch {
       // ignore
     }
     setShow(false);
-  }
+  }, [tourId]);
+
+  const handleStateChange = useCallback(
+    (id: string, state: TourState) => {
+      if (id === tourId && state.status !== "active") {
+        markDone();
+      }
+    },
+    [tourId, markDone]
+  );
+
+  const stepsWithPadding = useMemo(
+    () =>
+      steps.map((s) => ({
+        ...s,
+        spotlightPadding: s.spotlightPadding ?? 10,
+        spotlightRadius: 16,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(steps)]
+  );
+
+  const targets = useMemo(
+    () => stepsWithPadding.map((s) => s.target as string),
+    [stepsWithPadding]
+  );
 
   if (!show) return null;
 
-  const stepsWithPadding = steps.map((s) => ({
-    ...s,
-    spotlightPadding: s.spotlightPadding ?? 10,
-    spotlightRadius: 16,
-  }));
-
-  const targets = steps.map((s) => s.target);
-
   return (
     <SpotlightProvider
+      onStateChange={handleStateChange}
       labels={{
         next: "Siguiente",
         previous: "Anterior",
@@ -97,8 +116,8 @@ export default function PageTour({ tourId, steps }: PageTourProps) {
       <SpotlightTour
         id={tourId}
         steps={stepsWithPadding}
-        onComplete={handleComplete}
-        onSkip={handleComplete}
+        onComplete={markDone}
+        onSkip={markDone}
       />
       <TourAutoStart tourId={tourId} targets={targets} />
     </SpotlightProvider>
